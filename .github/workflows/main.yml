@@ -1,0 +1,59 @@
+
+name: CI
+
+# control when the workflow will run
+on:
+    # trigger workflow on push or pull req event on the main branch
+    push:
+        branches: [ "main" ]
+    pull_request:
+        branches: [ "main" ]
+
+    workflow_dispatch:
+
+jobs:
+    build-frontend:
+        runs-on: ubuntu-latest
+        defaults:
+          run:
+            working-directory: ./frontend
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '22.17.0'
+                cache: 'npm'
+                cache-dependency-path: frontend/package-lock.json
+            - name: Verify Node/NPM
+              run: |
+                node -v
+                npm -v
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run Linter & Build Check
+              run: |
+                npm run lint
+                npm run build
+    build-backend:
+        runs-on: ubuntu-latest
+        defaults:
+          run:
+            working-directory: ./backend
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '22.17.0'
+                cache: 'npm'
+                cache-dependency-path: backend/package-lock.json
+            - name: Install dependencies
+              run: npm ci
+
