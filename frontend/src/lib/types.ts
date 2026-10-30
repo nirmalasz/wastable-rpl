@@ -1,0 +1,136 @@
+/** Shapes returned by the Express API (see backend/src/modules). */
+export type ListingType = 'SELL' | 'EXCHANGE' | 'FREE';
+export type ListingStatus =
+  | 'AVAILABLE'
+  | 'PENDING'
+  | 'COMPLETED'
+  | 'EXPIRED'
+  | 'UNDER_REVIEW'
+  | 'REMOVED'
+  | 'REFERRED_TO_COMPOST';
+
+export const CATEGORIES = [
+  'cooked-meal',
+  'produce',
+  'bakery',
+  'packaged',
+  'beverage',
+  'dairy',
+  'other',
+] as const;
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'USER' | 'ADMIN';
+  status: 'UNVERIFIED' | 'ACTIVE' | 'SUSPENDED';
+  isVerified: boolean;
+  violationCount: number;
+  locationRadiusKm: number;
+  contactPreference: string | null;
+  avatarUrl: string | null;
+  homeLat: number | null;
+  homeLng: number | null;
+}
+
+export interface Listing {
+  id: string;
+  sellerId: string;
+  title: string;
+  description: string | null;
+  category: string;
+  quantity: number;
+  listingType: ListingType;
+  price: number;
+  expiryDate: string;
+  pickupArea: string;
+  isUrgent: boolean;
+  status: ListingStatus;
+  dietFlags: string[];
+  photoUrl: string | null;
+  sellerName?: string;
+  sellerAvatarUrl?: string | null;
+  sellerRating?: number | null;
+  distanceKm?: number | null;
+}
+
+export interface MyListing extends Listing {
+  pendingClaim: { transactionId: string; claimerName: string } | null;
+}
+
+export interface ListingDetail {
+  listing: Listing;
+  sellerReviewCount: number;
+  isOwner: boolean;
+  waitlistCount: number;
+  myWaitlistPosition: number | null;
+  myTransaction: { id: string; status: string } | null;
+}
+
+export interface Transaction {
+  id: string;
+  status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
+  createdAt: string;
+  listingId: string;
+  listingTitle: string;
+  listingType: ListingType;
+  price: number;
+  pickupArea: string;
+  claimerName: string;
+  role: 'BUYER' | 'SELLER';
+  counterpart: { name: string; contact: string | null };
+}
+
+export interface Notification {
+  id: string;
+  type: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface ListingDraft {
+  title: string;
+  category: string;
+  quantity: number;
+  expiryDate?: string;
+  description?: string;
+  listingType?: ListingType;
+  price?: number;
+  source: 'AI' | 'HEURISTIC';
+}
+
+export interface SearchFilters {
+  query?: string;
+  category?: string;
+  maxPrice?: number;
+  freeOnly?: boolean;
+  expiresWithinHours?: number;
+  radiusKm?: number;
+}
+
+export interface ModerationCase {
+  id: string;
+  source: string;
+  aiFlags: string[];
+  aiRationale: string | null;
+  createdAt: string;
+  listingId: string;
+  listingTitle: string;
+  listingDescription: string | null;
+  listingStatus: ListingStatus;
+  sellerName: string;
+  sellerViolations: number;
+  reports: { reason: string; createdAt: string }[];
+}
+
+export interface Appeal {
+  id: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  userName?: string;
+  userEmail?: string;
+  violationCount?: number;
+}

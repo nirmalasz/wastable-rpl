@@ -14,11 +14,16 @@ describe('API basics', () => {
   it('unknown routes return 404 JSON', async () => {
     const res = await request(app).get('/api/does-not-exist');
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe('Route not found');
+    expect(res.body.error).toBe('We could not find what you were looking for.');
   });
 
-  it('planned endpoints return 501 until implemented', async () => {
-    const res = await request(app).get('/api/search');
-    expect(res.status).toBe(501);
+  it('protected endpoints require a token', async () => {
+    const res = await request(app).get('/api/users/me');
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects invalid bodies with 400', async () => {
+    const res = await request(app).post('/api/auth/register').send({ email: 'nope' });
+    expect(res.status).toBe(400);
   });
 });

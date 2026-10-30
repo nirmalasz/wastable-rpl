@@ -57,6 +57,10 @@ export const users = pgTable('users', {
   violationCount: smallint('violation_count').notNull().default(0),
   locationRadiusKm: smallint('location_radius_km').notNull().default(3),
   contactPreference: text('contact_preference'),
+  avatarUrl: text('avatar_url'),
+  /** Home location, used to find nearby users for urgent-item reminders (never exposed publicly). */
+  homeLat: numeric('home_lat', { precision: 9, scale: 6 }),
+  homeLng: numeric('home_lng', { precision: 9, scale: 6 }),
   ...timestamps,
 });
 
@@ -116,21 +120,25 @@ export const waitlistEntries = pgTable(
   (t) => [uniqueIndex('waitlist_listing_user_uq').on(t.listingId, t.userId)],
 );
 
-export const reviews = pgTable('reviews', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  transactionId: uuid('transaction_id')
-    .notNull()
-    .references(() => transactions.id),
-  reviewerId: uuid('reviewer_id')
-    .notNull()
-    .references(() => users.id),
-  revieweeId: uuid('reviewee_id')
-    .notNull()
-    .references(() => users.id),
-  rating: smallint('rating').notNull(),
-  comment: text('comment'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const reviews = pgTable(
+  'reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
+    reviewerId: uuid('reviewer_id')
+      .notNull()
+      .references(() => users.id),
+    revieweeId: uuid('reviewee_id')
+      .notNull()
+      .references(() => users.id),
+    rating: smallint('rating').notNull(),
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('reviews_transaction_reviewer_uq').on(t.transactionId, t.reviewerId)],
+);
 
 // ---------- Safety & moderation ----------
 export const moderationCases = pgTable('moderation_cases', {

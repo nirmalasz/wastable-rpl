@@ -1,0 +1,13 @@
+node_modules
+.next
+dist
+.env
+.env.local
+.env.*.local
+uploads
+.git
+.gitignore
+docs
+README.md
+.eslintrc.json
+tsconfig.json

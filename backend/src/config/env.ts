@@ -5,9 +5,14 @@ const DEV_JWT_SECRET = 'dev-only-secret-change-me-before-deploying-123456';
 
 const envSchema = z
   .object({
-    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('production'),
     PORT: z.coerce.number().int().positive().default(4000),
+    /** Public base URL of this API, used to build upload URLs. */
+    PUBLIC_URL: z.string().default('http://localhost:4000'),
+    UPLOAD_DIR: z.string().default('uploads'),
     CORS_ORIGIN: z.string().default('http://localhost:3000'),
+    /** Number of reverse proxies in front of the API, so rate limits see the real client IP. */
+    TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 
     DATABASE_URL: z.string().default('postgres://wastable:wastable@localhost:5432/wastable'),
     REDIS_URL: z.string().default('redis://localhost:6379'),

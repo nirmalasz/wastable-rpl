@@ -21,6 +21,12 @@ export class HttpError extends Error {
   static notFound(message = 'Not found') {
     return new HttpError(404, message);
   }
+  static unprocessable(message = 'Unprocessable entity', details?: unknown) {
+    return new HttpError(422, message, details);
+  }
+  static tooMany(message = 'Too many requests') {
+    return new HttpError(429, message);
+  }
   static conflict(message = 'Conflict') {
     return new HttpError(409, message);
   }

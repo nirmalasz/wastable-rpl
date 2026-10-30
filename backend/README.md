@@ -14,7 +14,11 @@ src/
 └─ db/               Drizzle schema + client (migrations go to ./drizzle)
 ```
 
-All endpoints are mounted under `/api`. Planned endpoints currently answer **501 Not Implemented**; replace `notImplemented(...)` with real handlers as features are built.
+All endpoints are mounted under `/api`. Implemented: auth (register, email verification, login, password reset, profile), listings (AI extract, create with moderation, edit, delete, compost referral), search (filters + conversational), claim/waitlist/pickup transactions, reviews, notifications, reports/moderation queue/appeals, and the 15-minute expiry/urgent job.
+
+Without `GEMINI_API_KEY` the agents fall back to rule-based behaviour; without Redis the AI quota/cache falls back to process memory. Outside production, register / password-reset responses include `devVerificationToken` / `devResetToken` because no email is delivered yet (`lib/mailer.ts` only logs).
+
+`npm run db:seed` creates demo accounts (`admin@`, `rina@`, `budi@wastable.app`, password `password123`) and sample listings. `tests/flow.test.ts` runs the full marketplace flow against the local database and is skipped when PostgreSQL is unreachable.
 
 | Script                | What it does                                   |
 | --------------------- | ---------------------------------------------- |

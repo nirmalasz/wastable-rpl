@@ -64,3 +64,4 @@ ehthumbs.db
 .turbo/
 .vercel/
 *.pem
+uploads/

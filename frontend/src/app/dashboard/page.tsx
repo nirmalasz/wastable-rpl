@@ -1,0 +1,233 @@
+'use client';
+
+import Link from 'next/link';
+import { useState, type FormEvent } from 'react';
+import { RequireAuth } from '@/components/require-auth';
+import { Alert, Badge, Button, Card, Input, Loading, Select } from '@/components/ui';
+import { useAuth } from '@/features/auth';
+import { priceLabel } from '@/features/listings/listing-card';
+import { formatDateTime, humanize, timeLeft } from '@/lib/format';
+import type { MyListing, Transaction } from '@/lib/types';
+import { useApi } from '@/lib/use-api';
+
+function ReviewForm({ transactionId, onDone }: { transactionId: string; onDone: () => void }) {
+  const { call } = useAuth();
+  const [error, setError] = useState<string>();
+  const [sent, setSent] = useState(false);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setError(undefined);
+    try {
+      await call(`/transactions/${transactionId}/reviews`, {
+        body: { rating: Number(form.get('rating')), comment: String(form.get('comment') ?? '') },
+      });
+      setSent(true);
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  if (sent) return <Badge tone="brand">Review sent</Badge>;
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
+      <Select name="rating" defaultValue="5" className="w-auto" aria-label="Rating">
+        {[5, 4, 3, 2, 1].map((n) => (
+          <option key={n} value={n}>
+            {'★'.repeat(n)}
+          </option>
+        ))}
+      </Select>
+      <Input
+        name="comment"
+        placeholder="Comment (optional)"
+        className="w-full sm:w-56"
+        maxLength={1000}
+      />
+      <Button type="submit" variant="secondary">
+        Rate
+      </Button>
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </form>
+  );
+}
+
+function Dashboard() {
+  const { token, call } = useAuth();
+  const listings = useApi<{ listings: MyListing[] }>('/listings/mine', token);
+  const trx = useApi<{ transactions: Transaction[] }>('/transactions/mine', token);
+  const [notice, setNotice] = useState<{ kind: 'error' | 'success'; text: string }>();
+
+  async function run(fn: () => Promise<unknown>, success: string) {
+    setNotice(undefined);
+    try {
+      await fn();
+      setNotice({ kind: 'success', text: success });
+    } catch (err) {
+      setNotice({ kind: 'error', text: (err as Error).message });
+    } finally {
+      listings.reload();
+      trx.reload();
+    }
+  }
+
+  const setTrx = (id: string, status: 'COMPLETED' | 'CANCELLED', success: string) =>
+    run(() => call(`/transactions/${id}`, { method: 'PATCH', body: { status } }), success);
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <Link
+          href="/listings/new"
+          className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
+        >
+          Post food
+        </Link>
+      </div>
+      {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">My listings</h2>
+        {listings.error && <Alert>{listings.error}</Alert>}
+        {listings.loading && !listings.data && <Loading />}
+        {listings.data?.listings.length === 0 && (
+          <p className="text-sm text-slate-500">You have not posted anything yet.</p>
+        )}
+        {listings.data?.listings
+          .filter((l) => l.status !== 'REMOVED')
+          .map((l) => (
+            <Card key={l.id} className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Link href={`/listings/${l.id}`} className="font-semibold hover:underline">
+                  {l.title}
+                </Link>
+                <div className="flex gap-1">
+                  <Badge tone={l.status === 'AVAILABLE' ? 'brand' : 'neutral'}>
+                    {humanize(l.status)}
+                  </Badge>
+                  <Badge>{priceLabel(l)}</Badge>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                {l.quantity} × · {l.pickupArea} · {timeLeft(l.expiryDate)}
+              </p>
+              {l.status === 'UNDER_REVIEW' && (
+                <p className="text-sm text-slate-600">Hidden while a moderator reviews it.</p>
+              )}
+              {l.pendingClaim && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span>
+                    Reserved by <strong>{l.pendingClaim.claimerName}</strong>.
+                  </span>
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      setTrx(
+                        l.pendingClaim!.transactionId,
+                        'CANCELLED',
+                        'Claim cancelled. The listing is available again.',
+                      )
+                    }
+                  >
+                    Cancel claim
+                  </Button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                {l.status === 'EXPIRED' && (
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      run(
+                        () => call(`/listings/${l.id}/compost-referral`, { method: 'POST' }),
+                        'Referred to a compost partner.',
+                      )
+                    }
+                  >
+                    Refer to compost
+                  </Button>
+                )}
+                {l.status !== 'PENDING' && l.status !== 'REFERRED_TO_COMPOST' && (
+                  <Button
+                    variant="danger"
+                    onClick={() =>
+                      confirm(`Delete "${l.title}"?`) &&
+                      run(() => call(`/listings/${l.id}`, { method: 'DELETE' }), 'Listing deleted.')
+                    }
+                  >
+                    Delete
+                  </Button>
+                )}
+              </div>
+            </Card>
+          ))}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">My claims and sales</h2>
+        {trx.error && <Alert>{trx.error}</Alert>}
+        {trx.loading && !trx.data && <Loading />}
+        {trx.data?.transactions.length === 0 && (
+          <p className="text-sm text-slate-500">No transactions yet.</p>
+        )}
+        {trx.data?.transactions.map((t) => (
+          <Card key={t.id} className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Link href={`/listings/${t.listingId}`} className="font-semibold hover:underline">
+                {t.listingTitle}
+              </Link>
+              <div className="flex gap-1">
+                <Badge>{t.role === 'BUYER' ? 'You are buying' : `Sold to ${t.claimerName}`}</Badge>
+                <Badge
+                  tone={
+                    t.status === 'COMPLETED'
+                      ? 'brand'
+                      : t.status === 'CANCELLED'
+                        ? 'danger'
+                        : 'urgent'
+                  }
+                >
+                  {humanize(t.status)}
+                </Badge>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500">
+              {priceLabel({ listingType: t.listingType, price: t.price })} · {t.pickupArea} ·{' '}
+              {formatDateTime(t.createdAt)}
+            </p>
+            {t.status !== 'CANCELLED' && (
+              <p className="text-sm text-slate-700">
+                {t.role === 'BUYER' ? 'Seller' : 'Buyer'}: <strong>{t.counterpart.name}</strong> ·{' '}
+                {t.counterpart.contact ?? 'no contact details shared yet'}
+              </p>
+            )}
+            {t.status === 'PENDING' && (
+              <div className="flex gap-2">
+                {t.role === 'BUYER' && (
+                  <Button
+                    onClick={() =>
+                      setTrx(t.id, 'COMPLETED', 'Pickup confirmed. Please rate the seller below.')
+                    }
+                  >
+                    I picked it up
+                  </Button>
+                )}
+                <Button variant="secondary" onClick={() => setTrx(t.id, 'CANCELLED', 'Cancelled.')}>
+                  Cancel
+                </Button>
+              </div>
+            )}
+            {t.status === 'COMPLETED' && <ReviewForm transactionId={t.id} onDone={trx.reload} />}
+          </Card>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  return <RequireAuth>{() => <Dashboard />}</RequireAuth>;
+}

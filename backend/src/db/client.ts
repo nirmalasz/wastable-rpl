@@ -12,3 +12,7 @@ export function getDb() {
 }
 
 export type Db = ReturnType<typeof getDb>;
+
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+/** Either the plain client or a transaction handle, so helpers work inside and outside one. */
+export type Executor = Db | Tx;

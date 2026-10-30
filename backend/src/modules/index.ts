@@ -6,6 +6,7 @@ import { searchRouter } from './search/search.routes.js';
 import { transactionsRouter } from './transactions/transactions.routes.js';
 import { reviewsRouter } from './reviews/reviews.routes.js';
 import { notificationsRouter } from './notifications/notifications.routes.js';
+import { uploadsRouter } from './uploads/uploads.routes.js';
 import { moderationRouter } from './moderation/moderation.routes.js';
 
 /** All API routes, mounted under /api in app.ts. */
@@ -20,4 +21,5 @@ apiRouter.use(
   reviewsRouter,
   notificationsRouter,
   moderationRouter,
+  uploadsRouter,
 );
