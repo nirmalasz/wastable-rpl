@@ -16,7 +16,7 @@ const draftSchema = z.object({
 
 /**
  * Listing Agent (FR-15): turns free text and/or a photo into a structured listing draft.
- * Falls back to a keyword heuristic when Gemini is unavailable so the seller can still continue.
+ * Falls back to a keyword heuristic when the AI model is unavailable so the seller can still continue.
  */
 export async function extractListingDraft(
   input: { text?: string; photoUrl?: string },

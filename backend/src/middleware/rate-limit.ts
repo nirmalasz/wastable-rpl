@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 import type { AuthUser } from './auth.js';
 
 /**
- * Per-account limit for writes that call the Gemini API (listing create/edit, AI extract,
+ * Per-account limit for writes that call the AI model (listing create/edit, AI extract,
  * conversational search, reports). The moderation agent is not covered by the daily AI quota,
  * so without this one account could run up the Gemini bill. Use after requireAuth.
  */
