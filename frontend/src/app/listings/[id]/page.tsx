@@ -91,7 +91,14 @@ export default function ListingPage() {
   if (detail.error) return <Alert>{detail.error}</Alert>;
   if (!detail.data) return <Loading />;
 
-  const { listing: l, isOwner, waitlistCount, myWaitlistPosition, myTransaction } = detail.data;
+  const {
+    listing: l,
+    isOwner,
+    waitlistCount,
+    myWaitlistPosition,
+    myTransaction,
+    pickupLocation,
+  } = detail.data;
   const canAct = Boolean(user?.isVerified) && !isOwner;
   const claimLabel =
     l.listingType === 'SELL' ? 'buy' : l.listingType === 'EXCHANGE' ? 'offer exchange' : 'claim';
@@ -243,6 +250,37 @@ export default function ListingPage() {
             <span className="text-muted">Pickup area: </span>
             {l.pickupArea}
           </p>
+          {isOwner && (
+            <p className="rounded-[10px] bg-brand-50 px-3 py-2 text-sm">
+              {pickupLocation ? (
+                <>
+                  <span className="text-muted">Your saved pin (only you can see this): </span>
+                  {pickupLocation.lat.toFixed(5)}, {pickupLocation.lng.toFixed(5)} ·{' '}
+                  <a
+                    href={`https://www.openstreetmap.org/?mlat=${pickupLocation.lat}&mlon=${pickupLocation.lng}#map=17/${pickupLocation.lat}/${pickupLocation.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-brand-700 underline"
+                  >
+                    View on map
+                  </a>
+                </>
+              ) : (
+                <span className="text-muted">
+                  No exact pin saved, so buyers can&apos;t search this by distance.
+                </span>
+              )}
+              {l.status === 'AVAILABLE' && (
+                <>
+                  {' '}
+                  ·{' '}
+                  <Link href={`/listings/${id}/edit`} className="text-brand-700 underline">
+                    {pickupLocation ? 'Change' : 'Add one'}
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
 
           {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 

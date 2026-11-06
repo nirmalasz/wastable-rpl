@@ -7,7 +7,13 @@ import { ImageUpload } from '@/components/image-upload';
 import { Alert, Button, Card, Field, Input, Select, Textarea } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { toLocalInput, humanize } from '@/lib/format';
-import { CATEGORIES, type Listing, type ListingDraft, type ListingType } from '@/lib/types';
+import {
+  CATEGORIES,
+  type LatLng,
+  type Listing,
+  type ListingDraft,
+  type ListingType,
+} from '@/lib/types';
 
 interface FormState {
   title: string;
@@ -37,7 +43,7 @@ const EMPTY: FormState = {
   pickupLng: null,
 };
 
-const fromListing = (l: Listing): FormState => ({
+const fromListing = (l: Listing, pin: LatLng | null): FormState => ({
   title: l.title,
   description: l.description ?? '',
   category: l.category,
@@ -47,20 +53,67 @@ const fromListing = (l: Listing): FormState => ({
   expiry: toLocalInput(l.expiryDate),
   pickupArea: l.pickupArea,
   photoUrl: l.photoUrl ?? '',
-  // Exact coordinates are never sent to the browser; only overwrite them if the seller asks.
-  pickupLat: null,
-  pickupLng: null,
+  // The API returns the exact pin to the seller only.
+  pickupLat: pin?.lat ?? null,
+  pickupLng: pin?.lng ?? null,
 });
+
+/** A sale at Rp 0 is a giveaway; the API stores it as FREE as well. */
+const offerOf = (f: FormState): { listingType: ListingType; price: number } =>
+  f.listingType === 'SELL' && Number(f.price || 0) <= 0
+    ? { listingType: 'FREE', price: 0 }
+    : { listingType: f.listingType, price: f.listingType === 'SELL' ? Number(f.price) : 0 };
+
+const mapLink = ({ lat, lng }: LatLng) =>
+  `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`;
 
 /**
  * The "Post Listing" screen. Without `listing` it creates a new one; with `listing` the same
  * form edits it in place (PATCH), so sellers get the same fields and AI helper either way.
  */
-export function ListingForm({ listing }: { listing?: Listing }) {
+export function ListingForm({
+  listing,
+  savedLocation = null,
+}: {
+  listing?: Listing;
+  /** The listing's current pin (edit mode, seller only). */
+  savedLocation?: LatLng | null;
+}) {
   const editing = Boolean(listing);
   const { call } = useAuth();
   const router = useRouter();
-  const [form, setForm] = useState<FormState>(() => (listing ? fromListing(listing) : EMPTY));
+  const [form, setForm] = useState<FormState>(() =>
+    listing ? fromListing(listing, savedLocation) : EMPTY,
+  );
+  // On edit, only send coordinates when the seller changed or removed the pin.
+  const [locationTouched, setLocationTouched] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const pin: LatLng | null =
+    form.pickupLat !== null && form.pickupLng !== null
+      ? { lat: form.pickupLat, lng: form.pickupLng }
+      : null;
+  const offer = offerOf(form);
+
+  function locate() {
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({ ...f, pickupLat: pos.coords.latitude, pickupLng: pos.coords.longitude }));
+        setLocationTouched(true);
+        setLocating(false);
+      },
+      () => {
+        setError('Could not get your location. You can still post without it.');
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15_000 },
+    );
+  }
+
+  function clearLocation() {
+    setForm((f) => ({ ...f, pickupLat: null, pickupLng: null }));
+    setLocationTouched(true);
+  }
   const [freeText, setFreeText] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -111,13 +164,12 @@ export function ListingForm({ listing }: { listing?: Listing }) {
       description: form.description || null,
       category: form.category,
       quantity: Number(form.quantity),
-      listingType: form.listingType,
-      price: form.listingType === 'SELL' ? Number(form.price) : 0,
+      ...offer,
       expiryDate: new Date(form.expiry).toISOString(),
       pickupArea: form.pickupArea,
       photoUrl: form.photoUrl || null,
-      // On edit, leave the saved location alone unless a new one was captured.
-      ...((!editing || form.pickupLat !== null) && {
+      // On edit, leave the saved location alone unless the seller changed or removed it.
+      ...((!editing || locationTouched) && {
         pickupLat: form.pickupLat,
         pickupLng: form.pickupLng,
       }),
@@ -210,10 +262,18 @@ export function ListingForm({ listing }: { listing?: Listing }) {
               </Select>
             </Field>
             {form.listingType === 'SELL' && (
-              <Field label="Price (Rp)">
+              <Field
+                label="Price (Rp)"
+                hint={
+                  offer.listingType === 'FREE'
+                    ? 'Rp 0 will be listed as Free.'
+                    : 'Enter 0 to give it away for free.'
+                }
+              >
                 <Input
                   type="number"
-                  min={1}
+                  min={0}
+                  step={500}
                   value={form.price}
                   onChange={(e) => set('price', e.target.value)}
                   required
@@ -263,28 +323,40 @@ export function ListingForm({ listing }: { listing?: Listing }) {
               maxLength={2000}
             />
           </Field>
-          <div className="space-y-1 text-sm">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() =>
-                navigator.geolocation.getCurrentPosition(
-                  (pos) => {
-                    set('pickupLat', pos.coords.latitude);
-                    set('pickupLng', pos.coords.longitude);
-                  },
-                  () => setError('Could not get your location. You can still post without it.'),
-                )
-              }
-            >
-              {form.pickupLat !== null
-                ? 'Location saved'
-                : editing
-                  ? 'Update location to where I am now'
-                  : 'Use my location for distance search'}
-            </Button>
+          <div className="space-y-2 text-sm">
+            <span className="block font-medium">Exact pickup location (optional)</span>
+            {pin ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-[10px] bg-brand-50 px-3 py-2">
+                <span>
+                  Saved pin: {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}
+                </span>
+                <a
+                  href={mapLink(pin)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-brand-700 underline"
+                >
+                  View on map
+                </a>
+                <Button type="button" variant="secondary" onClick={locate} disabled={locating}>
+                  {locating ? 'Locating…' : 'Update to where I am now'}
+                </Button>
+                <button
+                  type="button"
+                  onClick={clearLocation}
+                  className="text-muted underline hover:text-danger"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <Button type="button" variant="secondary" onClick={locate} disabled={locating}>
+                {locating ? 'Locating…' : 'Use my location for distance search'}
+              </Button>
+            )}
             <p className="text-xs text-muted">
-              Lets nearby buyers find this by distance. Exact coordinates are never shown.
+              Lets nearby buyers find this by distance. Only you can see the exact pin; buyers see
+              the distance and the pickup area.
             </p>
           </div>
           {error && <Alert>{error}</Alert>}

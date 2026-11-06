@@ -31,7 +31,9 @@ function EditListing({ id }: { id: string }) {
       </Alert>
     );
   }
-  return <ListingForm key={listing.id} listing={listing} />;
+  return (
+    <ListingForm key={listing.id} listing={listing} savedLocation={detail.data.pickupLocation} />
+  );
 }
 
 export default function EditListingPage() {

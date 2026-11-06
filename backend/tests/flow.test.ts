@@ -144,6 +144,30 @@ describe.skipIf(!dbUp)('marketplace flow', () => {
     expect(profile.body.listings.some((l: { id: string }) => l.id === id)).toBe(false);
   });
 
+  it('saves a Rp 0 sale as FREE and shows the exact pin only to the seller', async () => {
+    const seller = await signUp('freeseller');
+    const viewer = await signUp('freeviewer');
+    const created = await post(
+      '/api/listings',
+      seller.token,
+      listingBody({ price: 0, pickupLat: -6.3646, pickupLng: 106.8287 }),
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.listing).toMatchObject({ listingType: 'FREE', price: 0 });
+    const id = created.body.listing.id as string;
+
+    const mine = await request(app).get(`/api/listings/${id}`).set(bearer(seller.token));
+    expect(mine.body.pickupLocation).toEqual({ lat: -6.3646, lng: 106.8287 });
+    const theirs = await request(app).get(`/api/listings/${id}`).set(bearer(viewer.token));
+    expect(theirs.body.pickupLocation).toBeNull();
+    expect(JSON.stringify(theirs.body)).not.toContain('106.8287');
+
+    // Editing a sale down to Rp 0 turns it into a giveaway too.
+    const sale = await post('/api/listings', seller.token, listingBody({ title: 'Roti' }));
+    const edited = await patch(`/api/listings/${sale.body.listing.id}`, seller.token, { price: 0 });
+    expect(edited.body.listing).toMatchObject({ listingType: 'FREE', price: 0 });
+  });
+
   it('cancelling a claim re-offers the listing to the waitlist', async () => {
     const seller = await signUp('seller2');
     const buyer = await signUp('buyer2');

@@ -52,11 +52,15 @@ const listingFields = {
   photoUrl: uploadUrlSchema.nullish(),
 };
 
-const createSchema = z.object(listingFields).superRefine((v, ctx) => {
-  if (v.listingType === 'SELL' && v.price <= 0) {
-    ctx.addIssue({ code: 'custom', path: ['price'], message: 'A sale listing needs a price' });
-  }
-});
+const createSchema = z.object(listingFields);
+
+type ListingType = z.infer<typeof listingFields.listingType>;
+
+/** A "sale" at Rp 0 is a giveaway: store it as FREE so search, badges and claims agree. */
+function normalizeOffer(listingType: ListingType, price: number) {
+  if (listingType === 'SELL' && price <= 0) return { listingType: 'FREE' as const, price: 0 };
+  return { listingType, price: listingType === 'SELL' ? price : 0 };
+}
 
 const updateSchema = z.object(listingFields).partial();
 
@@ -97,14 +101,15 @@ listingsRouter.post('/listings', ...writer, async (req, res) => {
   const moderation = await moderationOutcome(user, `${body.title}\n${body.description ?? ''}`);
   const underReview = moderation.verdict === 'UNCERTAIN';
 
+  const offer = normalizeOffer(body.listingType, body.price);
   const values = {
     sellerId: user.id,
     title: body.title,
     description: body.description ?? null,
     category: body.category,
     quantity: body.quantity,
-    listingType: body.listingType,
-    price: body.listingType === 'SELL' ? String(body.price) : '0',
+    listingType: offer.listingType,
+    price: String(offer.price),
     expiryDate: body.expiryDate,
     pickupArea: body.pickupArea,
     pickupLat: body.pickupLat == null ? null : String(body.pickupLat),
@@ -256,6 +261,11 @@ listingsRouter.get('/listings/:id', optionalAuth, async (req, res) => {
     }),
     sellerReviewCount: rating?.count ?? 0,
     isOwner,
+    // Exact coordinates stay private (NFR); only the seller gets them back, to check the pin.
+    pickupLocation:
+      isOwner && row.pickupLat !== null && row.pickupLng !== null
+        ? { lat: Number(row.pickupLat), lng: Number(row.pickupLng) }
+        : null,
     waitlistCount,
     myWaitlistPosition,
     myTransaction,
@@ -281,11 +291,10 @@ listingsRouter.patch('/listings/:id', ...writer, async (req, res) => {
   if (body.expiryDate && body.expiryDate.getTime() <= Date.now()) {
     throw HttpError.unprocessable('Expiry date must be in the future');
   }
-  const listingType = body.listingType ?? existing.listingType;
-  const price = body.price ?? Number(existing.price);
-  if (listingType === 'SELL' && price <= 0) {
-    throw HttpError.unprocessable('A sale listing needs a price');
-  }
+  const { listingType, price } = normalizeOffer(
+    body.listingType ?? existing.listingType,
+    body.price ?? Number(existing.price),
+  );
 
   let dietFlags = existing.dietFlags;
   let underReview = false;
@@ -308,7 +317,7 @@ listingsRouter.patch('/listings/:id', ...writer, async (req, res) => {
         ...(body.category !== undefined && { category: body.category }),
         ...(body.quantity !== undefined && { quantity: body.quantity }),
         listingType,
-        price: listingType === 'SELL' ? String(price) : '0',
+        price: String(price),
         expiryDate,
         ...(body.pickupArea !== undefined && { pickupArea: body.pickupArea }),
         ...(body.pickupLat !== undefined && {

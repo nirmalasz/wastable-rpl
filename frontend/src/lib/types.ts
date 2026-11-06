@@ -66,6 +66,13 @@ export interface ListingDetail {
   waitlistCount: number;
   myWaitlistPosition: number | null;
   myTransaction: { id: string; status: string } | null;
+  /** Exact pickup pin; only sent to the seller. */
+  pickupLocation: LatLng | null;
+}
+
+export interface LatLng {
+  lat: number;
+  lng: number;
 }
 
 export interface Transaction {
