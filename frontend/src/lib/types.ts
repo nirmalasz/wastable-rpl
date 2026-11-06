@@ -134,3 +134,18 @@ export interface Appeal {
   userEmail?: string;
   violationCount?: number;
 }
+
+export interface Review {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  reviewerName: string;
+}
+
+export interface ReviewSummary {
+  user: { id: string; name: string };
+  average: number | null;
+  total: number;
+  reviews: Review[];
+}
