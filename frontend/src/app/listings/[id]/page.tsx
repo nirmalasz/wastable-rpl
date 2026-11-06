@@ -100,9 +100,20 @@ export default function ListingPage() {
   let primary;
   if (isOwner) {
     primary = (
-      <Link href="/dashboard" className="claim-button">
-        manage
-      </Link>
+      <div className="space-y-2">
+        {l.status === 'AVAILABLE' ? (
+          <Link href={`/listings/${id}/edit`} className="claim-button">
+            edit
+          </Link>
+        ) : (
+          <p className="text-center text-sm text-muted">
+            {humanize(l.status)} listings can no longer be edited.
+          </p>
+        )}
+        <Link href="/dashboard" className="block text-center text-sm text-brand-700 underline">
+          Manage claims in dashboard
+        </Link>
+      </div>
     );
   } else if (!user) {
     primary = (

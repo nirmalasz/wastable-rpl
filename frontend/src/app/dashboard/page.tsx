@@ -101,6 +101,14 @@ function Dashboard() {
                   </div>
                 )}
                 <div className="flex gap-2">
+                  {l.status === 'AVAILABLE' && (
+                    <Link
+                      href={`/listings/${l.id}/edit`}
+                      className="rounded-[10px] bg-cream px-4 py-2 text-sm font-medium text-ink transition hover:bg-sand"
+                    >
+                      Edit
+                    </Link>
+                  )}
                   {l.status === 'EXPIRED' && (
                     <Button
                       variant="secondary"

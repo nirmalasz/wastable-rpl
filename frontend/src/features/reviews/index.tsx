@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { Avatar } from '@/components/avatar';
+import { ImageUpload } from '@/components/image-upload';
 import { Badge, Button, Input } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { formatDateTime } from '@/lib/format';
@@ -52,11 +53,11 @@ export function RatingBreakdown({ reviews }: { reviews: Review[] }) {
   return (
     <ul className="space-y-3 sm:space-y-4">
       {counts.map(({ star, count }) => (
-        <li key={star} className="flex items-center gap-3 sm:gap-5">
+        <li key={star} className="flex items-center gap-6 sm:gap-10">
           <span className="w-10 text-xl font-semibold text-black sm:text-[28px]">
             {star.toFixed(1)}
           </span>
-          <span className="relative h-4 flex-1 bg-[#b3b3b3]" aria-hidden>
+          <span className=" relative h-4 flex-1 bg-[#b3b3b3]" aria-hidden>
             <span
               className="absolute inset-y-0 left-0 bg-accent"
               style={{ width: `${(count / max) * 100}%` }}
@@ -102,7 +103,38 @@ export function ReviewCard({ review: r }: { review: Review }) {
           <Stars value={r.rating} size={32} />
         </span>
       </header>
+      <Link
+        href={`/listings/${r.listingId}`}
+        className="mt-3 inline-flex max-w-full items-center gap-2 rounded-[10px] bg-cream py-1 pr-3 pl-1 text-sm text-ink hover:bg-sand"
+        title="Reviewed product"
+      >
+        <img
+          src={r.listingPhotoUrl ?? '/images/listing-placeholder.jpg'}
+          alt=""
+          className="size-8 shrink-0 rounded-[6px] object-cover"
+        />
+        <span className="truncate">
+          <span className="text-muted">Product: </span>
+          {r.listingTitle}
+        </span>
+      </Link>
       {r.comment && <p className="mt-3 text-base text-black/65">“{r.comment}”</p>}
+      {r.photoUrl && (
+        <a
+          href={r.photoUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-block"
+          title="Open photo"
+        >
+          <img
+            src={r.photoUrl}
+            alt={`Photo from ${r.reviewerName}`}
+            loading="lazy"
+            className="size-16 rounded-[4px] object-cover transition hover:opacity-90"
+          />
+        </a>
+      )}
       <p className="mt-2 text-xs text-muted">{formatDateTime(r.createdAt)}</p>
     </article>
   );
@@ -184,6 +216,7 @@ export function ReviewForm({
   const { call } = useAuth();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const other = role === 'BUYER' ? 'seller' : 'buyer';
@@ -195,7 +228,7 @@ export function ReviewForm({
     setError(undefined);
     try {
       await call(`/transactions/${transactionId}/reviews`, {
-        body: { rating, comment: comment.trim() || undefined },
+        body: { rating, comment: comment.trim() || undefined, photoUrl },
       });
       onDone();
     } catch (err) {
@@ -225,6 +258,12 @@ export function ReviewForm({
           </button>
         ))}
       </div>
+      <ImageUpload
+        label="Add a photo (optional)"
+        shape="thumb"
+        value={photoUrl}
+        onChange={setPhotoUrl}
+      />
       <div className="flex flex-wrap gap-2">
         <Input
           value={comment}

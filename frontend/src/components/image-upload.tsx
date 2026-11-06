@@ -11,8 +11,8 @@ interface Props {
   value: string | null;
   onChange: (url: string | null) => void;
   label?: string;
-  /** "round" is for profile pictures, "wide" for listing photos. */
-  shape?: 'round' | 'wide';
+  /** "round" is for profile pictures, "wide" for listing photos, "thumb" for small attachments. */
+  shape?: 'round' | 'wide' | 'thumb';
 }
 
 /**
@@ -45,7 +45,11 @@ export function ImageUpload({ value, onChange, label = 'Photo', shape = 'wide' }
   }
 
   const frame =
-    shape === 'round' ? 'h-24 w-24 rounded-full' : 'aspect-square w-full rounded-[14px]';
+    shape === 'round'
+      ? 'h-24 w-24 rounded-full'
+      : shape === 'thumb'
+        ? 'h-24 w-24 rounded-[14px]'
+        : 'aspect-square w-full rounded-[14px]';
 
   return (
     <div className="space-y-2">

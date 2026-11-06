@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getDb } from '../../db/client.js';
 import { listings, reviews, transactions, users } from '../../db/schema.js';
 import { HttpError } from '../../lib/http-error.js';
+import { uploadUrlSchema } from '../../lib/storage.js';
 import { currentUser, requireAuth, requireVerified } from '../../middleware/auth.js';
 import { notify } from '../notifications/notifications.service.js';
 
@@ -19,6 +20,7 @@ reviewsRouter.post('/transactions/:id/reviews', requireAuth, requireVerified, as
     .object({
       rating: z.number().int().min(1).max(5),
       comment: z.string().trim().max(1000).optional(),
+      photoUrl: uploadUrlSchema.nullish(),
     })
     .parse(req.body);
   const me = currentUser(res);
@@ -52,6 +54,7 @@ reviewsRouter.post('/transactions/:id/reviews', requireAuth, requireVerified, as
       revieweeId,
       rating: body.rating,
       comment: body.comment ?? null,
+      photoUrl: body.photoUrl ?? null,
     })
     .returning();
   await notify(db, revieweeId, 'NEW_REVIEW', `You received a ${body.rating}-star review.`);
@@ -76,15 +79,20 @@ reviewsRouter.get('/users/:id/reviews', async (req, res) => {
       id: reviews.id,
       rating: reviews.rating,
       comment: reviews.comment,
+      photoUrl: reviews.photoUrl,
       createdAt: reviews.createdAt,
       reviewerId: reviews.reviewerId,
       reviewerName: users.name,
       reviewerAvatarUrl: users.avatarUrl,
       claimerId: transactions.claimerId,
+      listingId: listings.id,
+      listingTitle: listings.title,
+      listingPhotoUrl: listings.photoUrl,
     })
     .from(reviews)
     .innerJoin(users, eq(users.id, reviews.reviewerId))
     .innerJoin(transactions, eq(transactions.id, reviews.transactionId))
+    .innerJoin(listings, eq(listings.id, transactions.listingId))
     .where(eq(reviews.revieweeId, id))
     .orderBy(desc(reviews.createdAt))
     .limit(50);

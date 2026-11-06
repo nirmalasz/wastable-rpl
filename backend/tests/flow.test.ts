@@ -123,6 +123,8 @@ describe.skipIf(!dbUp)('marketplace flow', () => {
     const reviews = await request(app).get(`/api/users/${seller.id}/reviews`);
     expect(reviews.body.average).toBe(5);
     expect(reviews.body.reviews[0].reviewerRole).toBe('BUYER');
+    expect(reviews.body.reviews[0].listingId).toBe(id);
+    expect(reviews.body.reviews[0].photoUrl).toBeNull();
 
     // The seller rates the buyer back; the label flips.
     const sellerView = await request(app).get('/api/transactions/mine').set(bearer(seller.token));

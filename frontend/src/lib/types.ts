@@ -140,7 +140,13 @@ export interface Review {
   id: string;
   rating: number;
   comment: string | null;
+  /** Optional photo the reviewer attached. */
+  photoUrl: string | null;
   createdAt: string;
+  /** The product the review is about. */
+  listingId: string;
+  listingTitle: string;
+  listingPhotoUrl: string | null;
   reviewerId: string;
   reviewerName: string;
   reviewerAvatarUrl: string | null;
