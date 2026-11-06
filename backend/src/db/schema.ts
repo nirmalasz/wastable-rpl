@@ -135,6 +135,7 @@ export const reviews = pgTable(
       .references(() => users.id),
     rating: smallint('rating').notNull(),
     comment: text('comment'),
+    photoUrl: text('photo_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('reviews_transaction_reviewer_uq').on(t.transactionId, t.reviewerId)],

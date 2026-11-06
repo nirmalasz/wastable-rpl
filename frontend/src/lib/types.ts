@@ -79,7 +79,8 @@ export interface Transaction {
   pickupArea: string;
   claimerName: string;
   role: 'BUYER' | 'SELLER';
-  counterpart: { name: string; contact: string | null };
+  reviewedByMe: boolean;
+  counterpart: { id: string; name: string; avatarUrl: string | null; contact: string | null };
 }
 
 export interface Notification {
@@ -133,4 +134,35 @@ export interface Appeal {
   userName?: string;
   userEmail?: string;
   violationCount?: number;
+}
+
+export interface Review {
+  id: string;
+  rating: number;
+  comment: string | null;
+  /** Optional photo the reviewer attached. */
+  photoUrl: string | null;
+  createdAt: string;
+  /** The product the review is about. */
+  listingId: string;
+  listingTitle: string;
+  listingPhotoUrl: string | null;
+  reviewerId: string;
+  reviewerName: string;
+  reviewerAvatarUrl: string | null;
+  /** The reviewer's side of the deal. */
+  reviewerRole: 'BUYER' | 'SELLER';
+}
+
+export interface PublicUser {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+export interface ReviewSummary {
+  user: PublicUser;
+  average: number | null;
+  total: number;
+  reviews: Review[];
 }

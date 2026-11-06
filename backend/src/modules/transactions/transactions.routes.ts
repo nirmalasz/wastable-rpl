@@ -3,7 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getDb } from '../../db/client.js';
-import { listings, transactions, users, waitlistEntries } from '../../db/schema.js';
+import { listings, reviews, transactions, users, waitlistEntries } from '../../db/schema.js';
 import { MAX_OPEN_CLAIMS } from '../../lib/constants.js';
 import { HttpError } from '../../lib/http-error.js';
 import { currentUser, requireAuth, requireVerified } from '../../middleware/auth.js';
@@ -122,30 +122,51 @@ transactionsRouter.get('/transactions/mine', requireAuth, async (_req, res) => {
       claimerId: transactions.claimerId,
       claimerName: users.name,
       claimerContact: users.contactPreference,
+      claimerAvatarUrl: users.avatarUrl,
       sellerName: seller.name,
       sellerContact: seller.contactPreference,
+      sellerAvatarUrl: seller.avatarUrl,
+      myReviewId: reviews.id,
     })
     .from(transactions)
     .innerJoin(listings, eq(listings.id, transactions.listingId))
     .innerJoin(users, eq(users.id, transactions.claimerId))
     .innerJoin(seller, eq(seller.id, listings.sellerId))
+    .leftJoin(
+      reviews,
+      and(eq(reviews.transactionId, transactions.id), eq(reviews.reviewerId, me.id)),
+    )
     .where(or(eq(transactions.claimerId, me.id), eq(listings.sellerId, me.id)))
     .orderBy(desc(transactions.createdAt));
 
   res.json({
-    transactions: rows.map(({ claimerContact, sellerName, sellerContact, claimerId, ...r }) => {
-      const isBuyer = claimerId === me.id;
-      return {
-        ...r,
-        price: Number(r.price),
-        role: isBuyer ? ('BUYER' as const) : ('SELLER' as const),
-        // Contact details are only shared between the two people in an open or finished deal.
-        counterpart: {
-          name: isBuyer ? sellerName : r.claimerName,
-          contact: r.status === 'CANCELLED' ? null : isBuyer ? sellerContact : claimerContact,
-        },
-      };
-    }),
+    transactions: rows.map(
+      ({
+        claimerContact,
+        claimerAvatarUrl,
+        sellerName,
+        sellerContact,
+        sellerAvatarUrl,
+        claimerId,
+        myReviewId,
+        ...r
+      }) => {
+        const isBuyer = claimerId === me.id;
+        return {
+          ...r,
+          price: Number(r.price),
+          role: isBuyer ? ('BUYER' as const) : ('SELLER' as const),
+          reviewedByMe: myReviewId !== null,
+          // Contact details are only shared between the two people in an open or finished deal.
+          counterpart: {
+            id: isBuyer ? r.sellerId : claimerId,
+            avatarUrl: isBuyer ? sellerAvatarUrl : claimerAvatarUrl,
+            name: isBuyer ? sellerName : r.claimerName,
+            contact: r.status === 'CANCELLED' ? null : isBuyer ? sellerContact : claimerContact,
+          },
+        };
+      },
+    ),
   });
 });
 

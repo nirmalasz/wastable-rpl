@@ -1,67 +1,59 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
-import { ImageUpload } from '@/components/image-upload';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert, Badge, Button, Card, Field, Input, Select, Textarea } from '@/components/ui';
+import { Alert, Badge, Button, Card, Field, Loading, Textarea } from '@/components/ui';
 import { useAuth } from '@/features/auth';
+import { ListingCard } from '@/features/listings/listing-card';
+import { ListingGrid, ProfileHeader, ProfileTabs, type ProfileTab } from '@/features/profile';
+import { EditProfileModal } from '@/features/profile/edit-profile-modal';
+import { RatingPanel } from '@/features/reviews';
 import { formatDateTime, humanize } from '@/lib/format';
-import type { Appeal, User } from '@/lib/types';
+import type { Appeal, MyListing, ReviewSummary, User } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
 
+function ListingTab() {
+  const { token } = useAuth();
+  const mine = useApi<{ listings: MyListing[] }>('/listings/mine', token);
+  if (mine.error) return <Alert>{mine.error}</Alert>;
+  if (!mine.data) return <Loading />;
+  const visible = mine.data.listings.filter((l) => l.status !== 'REMOVED');
+  if (visible.length === 0) {
+    return (
+      <p className="rounded-[20px] bg-white p-6 text-center text-muted shadow-card">
+        You have no listings yet.{' '}
+        <Link href="/listings/new" className="text-brand-700 underline">
+          Post food
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <ListingGrid>
+      {visible.map((l) => (
+        <ListingCard key={l.id} listing={l} cartable={false} />
+      ))}
+    </ListingGrid>
+  );
+}
+
+function RatingTab({ userId }: { userId: string }) {
+  const reviews = useApi<ReviewSummary>(`/users/${userId}/reviews`);
+  if (reviews.error) return <Alert>{reviews.error}</Alert>;
+  if (!reviews.data) return <Loading />;
+  return <RatingPanel summary={reviews.data} />;
+}
+
 function Profile({ user }: { user: User }) {
-  const { token, call, refreshUser } = useAuth();
+  const { token, call } = useAuth();
   const appeals = useApi<{ appeals: Appeal[] }>(
     user.status === 'SUSPENDED' ? '/appeals/mine' : null,
     token,
   );
-  const [home, setHome] = useState<{ lat: number; lng: number } | null>(
-    user.homeLat !== null && user.homeLng !== null
-      ? { lat: user.homeLat, lng: user.homeLng }
-      : null,
-  );
   const [notice, setNotice] = useState<{ kind: 'error' | 'success'; text: string }>();
-
-  function locate() {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setHome({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => setNotice({ kind: 'error', text: 'Could not get your location.' }),
-    );
-  }
-
-  async function save(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    try {
-      await call('/users/me', {
-        method: 'PATCH',
-        body: {
-          name: String(form.get('name')),
-          locationRadiusKm: Number(form.get('radius')),
-          contactPreference: String(form.get('contact') ?? '') || null,
-          homeLat: home?.lat ?? null,
-          homeLng: home?.lng ?? null,
-        },
-      });
-      setNotice({ kind: 'success', text: 'Profile saved.' });
-      refreshUser();
-    } catch (err) {
-      setNotice({ kind: 'error', text: (err as Error).message });
-    }
-  }
-
-  async function saveAvatar(url: string | null) {
-    try {
-      await call('/users/me', { method: 'PATCH', body: { avatarUrl: url } });
-      setNotice({
-        kind: 'success',
-        text: url ? 'Profile photo updated.' : 'Profile photo removed.',
-      });
-      refreshUser();
-    } catch (err) {
-      setNotice({ kind: 'error', text: (err as Error).message });
-    }
-  }
+  const [tab, setTab] = useState<ProfileTab>('listing');
+  const [editing, setEditing] = useState(false);
 
   async function appeal(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -76,61 +68,41 @@ function Profile({ user }: { user: User }) {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-6">
-      <h1 className="text-4xl">Your profile</h1>
+    <div className="space-y-6">
+      <ProfileHeader
+        name={user.name}
+        avatarUrl={user.avatarUrl}
+        subtitle={`@${user.email.split('@')[0]}`}
+        action={
+          <Button
+            type="button"
+            variant="secondary"
+            aria-haspopup="dialog"
+            onClick={() => {
+              setNotice(undefined);
+              setEditing(true);
+            }}
+          >
+            Edit profile
+          </Button>
+        }
+      />
+
+      {editing && (
+        <EditProfileModal
+          user={user}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            setNotice({ kind: 'success', text: 'Profile saved.' });
+          }}
+        />
+      )}
+
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 
-      <Card className="space-y-3">
-        <ImageUpload
-          label="Profile photo"
-          shape="round"
-          value={user.avatarUrl}
-          onChange={saveAvatar}
-        />
-        <form onSubmit={save} className="space-y-3">
-          <p className="text-sm text-muted">
-            {user.email} ·{' '}
-            <Badge tone={user.status === 'ACTIVE' ? 'brand' : 'danger'}>
-              {humanize(user.status)}
-            </Badge>
-          </p>
-          <Field label="Name">
-            <Input name="name" defaultValue={user.name} required maxLength={80} />
-          </Field>
-          <Field
-            label="Contact preference"
-            hint="Shown to your trade partner, e.g. WhatsApp number."
-          >
-            <Input name="contact" defaultValue={user.contactPreference ?? ''} maxLength={200} />
-          </Field>
-          <Field
-            label="Reminder radius"
-            hint="Get urgent-item reminders from sellers within this distance."
-          >
-            <Select name="radius" defaultValue={user.locationRadiusKm}>
-              {[1, 2, 3, 5, 10, 20].map((r) => (
-                <option key={r} value={r}>
-                  {r} km
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="flex items-center gap-3 text-sm">
-            <Button type="button" variant="secondary" onClick={locate}>
-              {home ? 'Update my location' : 'Set my location'}
-            </Button>
-            {home && (
-              <span className="text-muted">
-                {home.lat.toFixed(3)}, {home.lng.toFixed(3)}
-              </span>
-            )}
-          </div>
-          <Button type="submit">Save</Button>
-        </form>
-      </Card>
-
       {user.status === 'SUSPENDED' && (
-        <Card className="space-y-3">
+        <Card className="mx-auto max-w-xl space-y-3">
           <h2 className="text-xl">Appeal your suspension</h2>
           <form onSubmit={appeal} className="space-y-3">
             <Field label="Why should the suspension be lifted?">
@@ -145,6 +117,11 @@ function Profile({ user }: { user: User }) {
           ))}
         </Card>
       )}
+
+      <ProfileTabs tab={tab} onChange={setTab} />
+      <div role="tabpanel">
+        {tab === 'listing' ? <ListingTab /> : <RatingTab userId={user.id} />}
+      </div>
     </div>
   );
 }

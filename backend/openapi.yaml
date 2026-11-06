@@ -269,6 +269,7 @@ paths:
                     properties:
                       id: { type: string, format: uuid }
                       name: { type: string }
+                      avatarUrl: { type: [string, 'null'] }
                   average: { type: [number, 'null'] }
                   total: { type: integer }
                   reviews:
@@ -280,7 +281,45 @@ paths:
                         rating: { type: integer, minimum: 1, maximum: 5 }
                         comment: { type: [string, 'null'] }
                         createdAt: { type: string, format: date-time }
+                        photoUrl: { type: [string, 'null'] }
+                        listingId: { type: string, format: uuid }
+                        listingTitle: { type: string }
+                        listingPhotoUrl: { type: [string, 'null'] }
+                        reviewerId: { type: string, format: uuid }
                         reviewerName: { type: string }
+                        reviewerAvatarUrl: { type: [string, 'null'] }
+                        reviewerRole:
+                          type: string
+                          enum: [BUYER, SELLER]
+                          description: The reviewer's side of the transaction.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /users/{id}/listings:
+    get:
+      security: []
+      tags: [Listings]
+      summary: A user's public profile and live listings
+      description: Only `AVAILABLE` or `PENDING` listings that have not expired.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Profile and listings, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+                      avatarUrl: { type: [string, 'null'] }
+                  listings:
+                    type: array
+                    items: { $ref: '#/components/schemas/Listing' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '404': { $ref: '#/components/responses/Error' }
 
@@ -593,17 +632,30 @@ paths:
         Listings without stored coordinates are never excluded by `radiusKm`.
         Distance is only computed when both `lat` and `lng` are supplied.
       parameters:
-        - { name: q, in: query, schema: { type: string, maxLength: 200 }, description: Free-text keywords. }
+        - {
+            name: q,
+            in: query,
+            schema: { type: string, maxLength: 200 },
+            description: Free-text keywords.,
+          }
         - { name: category, in: query, schema: { $ref: '#/components/schemas/Category' } }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/ListingType' } }
         - { name: maxPrice, in: query, schema: { type: number, minimum: 0 } }
         - { name: free, in: query, schema: { type: string, enum: ['true', 'false', '1', '0'] } }
         - { name: urgent, in: query, schema: { type: string, enum: ['true', 'false', '1', '0'] } }
-        - { name: expiresWithinHours, in: query, schema: { type: number, exclusiveMinimum: 0, maximum: 720 } }
+        - {
+            name: expiresWithinHours,
+            in: query,
+            schema: { type: number, exclusiveMinimum: 0, maximum: 720 },
+          }
         - { name: lat, in: query, schema: { type: number, minimum: -90, maximum: 90 } }
         - { name: lng, in: query, schema: { type: number, minimum: -180, maximum: 180 } }
         - { name: radiusKm, in: query, schema: { type: number, exclusiveMinimum: 0, maximum: 100 } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 50, default: 20 },
+          }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
       responses:
         '200':
@@ -627,7 +679,12 @@ paths:
         and returns up to 30 results. Counts against the user's AI quota.
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 300 } }
+        - {
+            name: q,
+            in: query,
+            required: true,
+            schema: { type: string, minLength: 1, maxLength: 300 },
+          }
         - { name: lat, in: query, schema: { type: number, minimum: -90, maximum: 90 } }
         - { name: lng, in: query, schema: { type: number, minimum: -180, maximum: 180 } }
       responses:
@@ -679,10 +736,13 @@ paths:
                         sellerId: { type: string, format: uuid }
                         claimerName: { type: string }
                         role: { type: string, enum: [BUYER, SELLER] }
+                        reviewedByMe: { type: boolean }
                         counterpart:
                           type: object
                           properties:
+                            id: { type: string, format: uuid }
                             name: { type: string }
+                            avatarUrl: { type: [string, 'null'] }
                             contact: { type: [string, 'null'] }
         '401': { $ref: '#/components/responses/Error' }
 
@@ -739,6 +799,10 @@ paths:
               properties:
                 rating: { type: integer, minimum: 1, maximum: 5 }
                 comment: { type: string, maxLength: 1000 }
+                photoUrl:
+                  oneOf:
+                    - $ref: '#/components/schemas/UploadUrl'
+                    - type: 'null'
       responses:
         '201':
           description: Review created
@@ -756,6 +820,7 @@ paths:
                       revieweeId: { type: string, format: uuid }
                       rating: { type: integer }
                       comment: { type: [string, 'null'] }
+                      photoUrl: { type: [string, 'null'] }
                       createdAt: { type: string, format: date-time }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Error' }
@@ -1220,7 +1285,8 @@ components:
         sellerName: { type: string }
         sellerAvatarUrl: { type: [string, 'null'] }
         sellerRating: { type: [number, 'null'] }
-        distanceKm: { type: [number, 'null'], description: Only in search results when lat/lng are given. }
+        distanceKm:
+          { type: [number, 'null'], description: Only in search results when lat/lng are given. }
     ListingDraft:
       type: object
       properties:

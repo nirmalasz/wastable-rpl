@@ -1,58 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert, Badge, Button, Card, Input, Loading, Select } from '@/components/ui';
+import { Alert, Badge, Button, Card, Loading } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { priceLabel } from '@/features/listings/listing-card';
+import { ReviewForm } from '@/features/reviews';
 import { formatDateTime, humanize, timeLeft } from '@/lib/format';
 import type { MyListing, Transaction } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
-
-function ReviewForm({ transactionId, onDone }: { transactionId: string; onDone: () => void }) {
-  const { call } = useAuth();
-  const [error, setError] = useState<string>();
-  const [sent, setSent] = useState(false);
-
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    setError(undefined);
-    try {
-      await call(`/transactions/${transactionId}/reviews`, {
-        body: { rating: Number(form.get('rating')), comment: String(form.get('comment') ?? '') },
-      });
-      setSent(true);
-      onDone();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }
-
-  if (sent) return <Badge tone="brand">Review sent</Badge>;
-  return (
-    <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-      <Select name="rating" defaultValue="5" className="w-auto" aria-label="Rating">
-        {[5, 4, 3, 2, 1].map((n) => (
-          <option key={n} value={n}>
-            {'★'.repeat(n)}
-          </option>
-        ))}
-      </Select>
-      <Input
-        name="comment"
-        placeholder="Comment (optional)"
-        className="w-full sm:w-56"
-        maxLength={1000}
-      />
-      <Button type="submit" variant="secondary">
-        Rate
-      </Button>
-      {error && <span className="text-xs text-danger">{error}</span>}
-    </form>
-  );
-}
 
 function Dashboard() {
   const { token, call } = useAuth();
@@ -144,6 +101,14 @@ function Dashboard() {
                   </div>
                 )}
                 <div className="flex gap-2">
+                  {l.status === 'AVAILABLE' && (
+                    <Link
+                      href={`/listings/${l.id}/edit`}
+                      className="rounded-[10px] bg-cream px-4 py-2 text-sm font-medium text-ink transition hover:bg-sand"
+                    >
+                      Edit
+                    </Link>
+                  )}
                   {l.status === 'EXPIRED' && (
                     <Button
                       variant="secondary"
@@ -211,8 +176,11 @@ function Dashboard() {
             </p>
             {t.status !== 'CANCELLED' && (
               <p className="text-sm text-muted">
-                {t.role === 'BUYER' ? 'Seller' : 'Buyer'}: <strong>{t.counterpart.name}</strong> ·{' '}
-                {t.counterpart.contact ?? 'no contact details shared yet'}
+                {t.role === 'BUYER' ? 'Seller' : 'Buyer'}:{' '}
+                <Link href={`/users/${t.counterpart.id}`} className="font-semibold hover:underline">
+                  {t.counterpart.name}
+                </Link>{' '}
+                · {t.counterpart.contact ?? 'no contact details shared yet'}
               </p>
             )}
             {t.status === 'PENDING' && (
@@ -231,7 +199,19 @@ function Dashboard() {
                 </Button>
               </div>
             )}
-            {t.status === 'COMPLETED' && <ReviewForm transactionId={t.id} onDone={trx.reload} />}
+            {t.status === 'COMPLETED' &&
+              (t.reviewedByMe ? (
+                <Badge tone="brand">
+                  You reviewed this {t.role === 'BUYER' ? 'seller' : 'buyer'}
+                </Badge>
+              ) : (
+                <ReviewForm
+                  transactionId={t.id}
+                  role={t.role}
+                  counterpartName={t.counterpart.name}
+                  onDone={trx.reload}
+                />
+              ))}
           </Card>
         ))}
       </section>

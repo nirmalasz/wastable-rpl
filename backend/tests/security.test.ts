@@ -201,6 +201,20 @@ describe.skipIf(!dbUp)('security', () => {
     expect(review.status).toBe(403);
   });
 
+  it('only accepts review photos from our own uploads', async () => {
+    const seller = await signUp('rpseller');
+    const buyer = await signUp('rpbuyer');
+    const created = await post('/api/listings', seller.token, listingBody());
+    const claim = await post(`/api/listings/${created.body.listing.id}/claim`, buyer.token);
+    const trxId = claim.body.transaction.id as string;
+    await patch(`/api/transactions/${trxId}`, buyer.token, { status: 'COMPLETED' });
+    const review = await post(`/api/transactions/${trxId}/reviews`, buyer.token, {
+      rating: 5,
+      photoUrl: 'https://evil.example/tracker.png',
+    });
+    expect(review.status).toBe(400);
+  });
+
   it('scheduler cancels claims that were never picked up', async () => {
     const seller = await signUp('toseller');
     const buyer = await signUp('tobuyer');

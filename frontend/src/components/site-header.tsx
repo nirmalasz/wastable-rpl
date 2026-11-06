@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '@/features/auth';
+import { useCart } from '@/features/cart';
 import { useApi } from '@/lib/use-api';
 import { Avatar } from './avatar';
 
@@ -32,11 +33,20 @@ function UnreadDot({ count }: { count: number }) {
   );
 }
 
+function CartCount() {
+  const { items } = useCart();
+  if (items.length === 0) return null;
+  return (
+    <span className="absolute -top-1 -right-1 min-w-5 rounded-full bg-brand-700 px-1 text-center text-xs leading-5 font-semibold text-white">
+      {items.length}
+    </span>
+  );
+}
+
 /** Left rail from the Figma Prototype: logo silhouette, page icons, settings and log out. */
 export function SiteSidebar() {
   const { user, token, logout } = useAuth();
   const pathname = usePathname();
-  const unread = useUnread();
   const signedIn = Boolean(token);
 
   const item = (href: string) =>
@@ -58,9 +68,12 @@ export function SiteSidebar() {
           <Link href="/dashboard" className={item('/dashboard')} title="Dashboard">
             <img src="/icons/nav-dashboard.svg" alt="Dashboard" width={34} height={34} />
           </Link>
-          <Link href="/notifications" className={item('/notifications')} title="Notifications">
-            <img src="/icons/nav-chat.svg" alt="Notifications" width={32} height={32} />
-            <UnreadDot count={unread} />
+          <Link href="/chat" className={item('/chat')} title="Chat">
+            <img src="/icons/nav-chat.svg" alt="Chat" width={32} height={32} />
+          </Link>
+          <Link href="/cart" className={item('/cart')} title="Cart">
+            <img src="/icons/nav-cart.svg" alt="Cart" width={39} height={33} />
+            <CartCount />
           </Link>
           {user?.role === 'ADMIN' && (
             <Link
@@ -167,6 +180,16 @@ export function SiteHeader() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          {signedIn && (
+            <Link
+              href="/notifications"
+              onClick={close}
+              className="relative hidden rounded-[10px] bg-surface px-3 py-2 text-sm shadow-button hover:bg-brand-50 md:block"
+            >
+              Notifications
+              <UnreadDot count={unread} />
+            </Link>
+          )}
           {signedIn ? (
             <Link
               href="/profile"
@@ -221,6 +244,12 @@ export function SiteHeader() {
           </Link>
           <Link href="/dashboard" className={mobileLink}>
             Dashboard
+          </Link>
+          <Link href="/chat" className={mobileLink}>
+            Chat
+          </Link>
+          <Link href="/cart" className={mobileLink}>
+            Cart
           </Link>
           <Link href="/notifications" className={mobileLink}>
             Notifications{unread > 0 && ` (${unread})`}
