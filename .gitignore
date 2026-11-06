@@ -64,4 +64,5 @@ ehthumbs.db
 .turbo/
 .vercel/
 *.pem
-uploads/
+# User-uploaded photos (UPLOAD_DIR). Anchored so it does not hide src/modules/uploads/.
+/backend/uploads/

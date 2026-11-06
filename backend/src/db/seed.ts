@@ -34,7 +34,10 @@ const PASSWORD = 'password123';
 const hours = (h: number) => new Date(Date.now() + h * 3_600_000);
 const ago = (h: number) => hours(-h);
 
-const [probe] = await db.select({ id: users.id }).from(users).where(eq(users.email, 'admin@wastable.app'));
+const [probe] = await db
+  .select({ id: users.id })
+  .from(users)
+  .where(eq(users.email, 'admin@wastable.app'));
 if (probe && !process.argv.includes('--reset')) {
   console.log('Demo data already present. Run with --reset to wipe and re-seed.');
   process.exit(0);
@@ -145,9 +148,17 @@ const [komposDepok] = await db
 // ---------------------------------------------------------------- Listings
 type NewListing = typeof listings.$inferInsert;
 const kukusan = { pickupArea: 'Depok - Kukusan', pickupLat: '-6.3680', pickupLng: '106.8240' };
-const margonda = { pickupArea: 'Depok - Jl. Margonda Raya', pickupLat: '-6.3640', pickupLng: '106.8280' };
+const margonda = {
+  pickupArea: 'Depok - Jl. Margonda Raya',
+  pickupLat: '-6.3640',
+  pickupLng: '106.8280',
+};
 const beji = { pickupArea: 'Depok - Beji', pickupLat: '-6.3720', pickupLng: '106.8350' };
-const pondokCina = { pickupArea: 'Depok - Pondok Cina', pickupLat: '-6.3560', pickupLng: '106.8330' };
+const pondokCina = {
+  pickupArea: 'Depok - Pondok Cina',
+  pickupLat: '-6.3560',
+  pickupLng: '106.8330',
+};
 const cimanggis = { pickupArea: 'Depok - Cimanggis', pickupLat: '-6.3890', pickupLng: '106.8180' };
 
 const mkListing = async (l: NewListing) => {
@@ -321,9 +332,13 @@ const reserved = await mkListing({
   status: 'PENDING',
   dietFlags: ['gluten', 'dairy', 'egg', 'nuts'],
 });
-await db
-  .insert(transactions)
-  .values({ listingId: reserved.id, claimerId: budi.id, status: 'PENDING', createdAt: ago(1), updatedAt: ago(1) });
+await db.insert(transactions).values({
+  listingId: reserved.id,
+  claimerId: budi.id,
+  status: 'PENDING',
+  createdAt: ago(1),
+  updatedAt: ago(1),
+});
 await db.insert(waitlistEntries).values([
   { listingId: reserved.id, userId: andi.id, position: 1 },
   { listingId: reserved.id, userId: sari.id, position: 2 },
@@ -364,7 +379,14 @@ const doneMeal = await mkListing({
 });
 const [doneMealTx] = await db
   .insert(transactions)
-  .values({ listingId: doneMeal.id, claimerId: budi.id, status: 'COMPLETED', completedAt: ago(34), createdAt: ago(40), updatedAt: ago(34) })
+  .values({
+    listingId: doneMeal.id,
+    claimerId: budi.id,
+    status: 'COMPLETED',
+    completedAt: ago(34),
+    createdAt: ago(40),
+    updatedAt: ago(34),
+  })
   .returning();
 const doneBread = await mkListing({
   sellerId: sari.id,
@@ -380,7 +402,14 @@ const doneBread = await mkListing({
 });
 const [doneBreadTx] = await db
   .insert(transactions)
-  .values({ listingId: doneBread.id, claimerId: rina.id, status: 'COMPLETED', completedAt: ago(75), createdAt: ago(80), updatedAt: ago(75) })
+  .values({
+    listingId: doneBread.id,
+    claimerId: rina.id,
+    status: 'COMPLETED',
+    completedAt: ago(75),
+    createdAt: ago(80),
+    updatedAt: ago(75),
+  })
   .returning();
 const doneJuice = await mkListing({
   sellerId: andi.id,
@@ -395,14 +424,55 @@ const doneJuice = await mkListing({
 });
 const [doneJuiceTx] = await db
   .insert(transactions)
-  .values({ listingId: doneJuice.id, claimerId: sari.id, status: 'COMPLETED', completedAt: ago(110), createdAt: ago(118), updatedAt: ago(110) })
+  .values({
+    listingId: doneJuice.id,
+    claimerId: sari.id,
+    status: 'COMPLETED',
+    completedAt: ago(110),
+    createdAt: ago(118),
+    updatedAt: ago(110),
+  })
   .returning();
 await db.insert(reviews).values([
-  { transactionId: doneMealTx!.id, reviewerId: budi.id, revieweeId: rina.id, rating: 5, comment: 'Masih hangat dan porsinya banyak. Penjual ramah!', createdAt: ago(33) },
-  { transactionId: doneMealTx!.id, reviewerId: rina.id, revieweeId: budi.id, rating: 5, comment: 'Pembeli tepat waktu.', createdAt: ago(32) },
-  { transactionId: doneBreadTx!.id, reviewerId: rina.id, revieweeId: sari.id, rating: 4, comment: 'Donatnya enak, hanya agak lama menunggu balasan.', createdAt: ago(74) },
-  { transactionId: doneBreadTx!.id, reviewerId: sari.id, revieweeId: rina.id, rating: 5, createdAt: ago(73) },
-  { transactionId: doneJuiceTx!.id, reviewerId: sari.id, revieweeId: andi.id, rating: 3, comment: 'Jusnya sedikit encer, tapi lokasi mudah.', createdAt: ago(108) },
+  {
+    transactionId: doneMealTx!.id,
+    reviewerId: budi.id,
+    revieweeId: rina.id,
+    rating: 5,
+    comment: 'Masih hangat dan porsinya banyak. Penjual ramah!',
+    createdAt: ago(33),
+  },
+  {
+    transactionId: doneMealTx!.id,
+    reviewerId: rina.id,
+    revieweeId: budi.id,
+    rating: 5,
+    comment: 'Pembeli tepat waktu.',
+    createdAt: ago(32),
+  },
+  {
+    transactionId: doneBreadTx!.id,
+    reviewerId: rina.id,
+    revieweeId: sari.id,
+    rating: 4,
+    comment: 'Donatnya enak, hanya agak lama menunggu balasan.',
+    createdAt: ago(74),
+  },
+  {
+    transactionId: doneBreadTx!.id,
+    reviewerId: sari.id,
+    revieweeId: rina.id,
+    rating: 5,
+    createdAt: ago(73),
+  },
+  {
+    transactionId: doneJuiceTx!.id,
+    reviewerId: sari.id,
+    revieweeId: andi.id,
+    rating: 3,
+    comment: 'Jusnya sedikit encer, tapi lokasi mudah.',
+    createdAt: ago(108),
+  },
 ]);
 
 // --- Cancelled transaction (listing went back on the market)
@@ -511,8 +581,18 @@ const [openCase] = await db
   })
   .returning();
 await db.insert(reports).values([
-  { listingId: reportedMeat.id, reporterId: sari.id, caseId: openCase!.id, reason: 'Daging mentah tanpa kemasan, takut tidak higienis.' },
-  { listingId: reportedMeat.id, reporterId: budi.id, caseId: openCase!.id, reason: 'Tidak jelas disimpan di suhu berapa.' },
+  {
+    listingId: reportedMeat.id,
+    reporterId: sari.id,
+    caseId: openCase!.id,
+    reason: 'Daging mentah tanpa kemasan, takut tidak higienis.',
+  },
+  {
+    listingId: reportedMeat.id,
+    reporterId: budi.id,
+    caseId: openCase!.id,
+    reason: 'Tidak jelas disimpan di suhu berapa.',
+  },
 ]);
 
 // 3) Dismissed case: listing restored
@@ -592,7 +672,8 @@ await db.insert(appeals).values([
   {
     userId: agus.id,
     caseId: violationCases[2]!.id,
-    reason: 'Saya tidak sengaja mengunggah foto yang salah. Saya berjanji memeriksa kondisi makanan sebelum memposting.',
+    reason:
+      'Saya tidak sengaja mengunggah foto yang salah. Saya berjanji memeriksa kondisi makanan sebelum memposting.',
     status: 'PENDING',
     createdAt: ago(5),
     updatedAt: ago(5),
@@ -616,34 +697,134 @@ const notif = (userId: string, type: string, message: string, h: number, isRead 
   isRead,
   createdAt: ago(h),
 });
-await db.insert(notifications).values([
-  notif(rina.id, 'CLAIM_REQUEST', 'Someone wants "Brownies Panggang (1 loyang)". Arrange the pickup or delivery details.', 1),
-  notif(rina.id, 'LISTING_EXPIRED', '"Pisang Goreng (sudah dingin)" has expired. You can refer it to a compost partner from your dashboard.', 5),
-  notif(rina.id, 'NEW_REVIEW', 'You received a 5-star review.', 33, true),
-  notif(rina.id, 'URGENT_ITEM', 'Hurry: "Roti Manis Isi Cokelat (8 pcs)" expires soon, 1.4 km away.', 0.5),
-  notif(budi.id, 'URGENT_ITEM', 'Hurry: "Nasi Kotak Ayam Bakar" expires soon, 0.9 km away.', 0.3),
-  notif(budi.id, 'URGENT_ITEM', 'Hurry: "Soto Ayam + Lontong (3 porsi)" expires soon, 1.1 km away.', 0.2),
-  notif(budi.id, 'REPORT_DISMISSED', 'Your report on "Tempe Mendoan (20 pcs)" was reviewed and dismissed.', 8, true),
-  notif(andi.id, 'LISTING_HIDDEN', '"Daging Ayam Mentah 2 kg" is hidden while an admin reviews a report.', 4),
-  notif(andi.id, 'CLAIM_CANCELLED', 'The claim on "Pepes Ikan (3 bungkus)" was cancelled.', 5, true),
-  notif(sari.id, 'PICKUP_COMPLETED', 'Pickup of "Donat Kentang (6 pcs)" is confirmed. Leave a review!', 75, true),
-  notif(sari.id, 'ITEM_TAKEN', '"Brownies Panggang (1 loyang)" is reserved by someone else. You are #2 on the waitlist.', 1),
-  notif(dewi.id, 'LISTING_HIDDEN', '"Jamu Herbal Tradisional (10 botol)" is awaiting admin review.', 2),
-  notif(agus.id, 'LISTING_REMOVED', '"Ayam Kedaluwarsa (bau)" was removed for violating the rules. Your account is suspended.', 120, true),
-  notif(maya.id, 'APPEAL_DECIDED', 'Your appeal was rejected. Your account remains suspended.', 30),
-  notif(admin.id, 'NEW_CASE', 'Listing "Jamu Herbal Tradisional (10 botol)" needs moderation review.', 2),
-  notif(admin.id, 'NEW_CASE', 'Listing "Daging Ayam Mentah 2 kg" was reported: Daging mentah tanpa kemasan, takut tidak higienis.', 4),
-  notif(admin.id, 'APPEAL_SUBMITTED', 'A suspended user submitted an appeal.', 5),
-]);
+await db
+  .insert(notifications)
+  .values([
+    notif(
+      rina.id,
+      'CLAIM_REQUEST',
+      'Someone wants "Brownies Panggang (1 loyang)". Arrange the pickup or delivery details.',
+      1,
+    ),
+    notif(
+      rina.id,
+      'LISTING_EXPIRED',
+      '"Pisang Goreng (sudah dingin)" has expired. You can refer it to a compost partner from your dashboard.',
+      5,
+    ),
+    notif(rina.id, 'NEW_REVIEW', 'You received a 5-star review.', 33, true),
+    notif(
+      rina.id,
+      'URGENT_ITEM',
+      'Hurry: "Roti Manis Isi Cokelat (8 pcs)" expires soon, 1.4 km away.',
+      0.5,
+    ),
+    notif(budi.id, 'URGENT_ITEM', 'Hurry: "Nasi Kotak Ayam Bakar" expires soon, 0.9 km away.', 0.3),
+    notif(
+      budi.id,
+      'URGENT_ITEM',
+      'Hurry: "Soto Ayam + Lontong (3 porsi)" expires soon, 1.1 km away.',
+      0.2,
+    ),
+    notif(
+      budi.id,
+      'REPORT_DISMISSED',
+      'Your report on "Tempe Mendoan (20 pcs)" was reviewed and dismissed.',
+      8,
+      true,
+    ),
+    notif(
+      andi.id,
+      'LISTING_HIDDEN',
+      '"Daging Ayam Mentah 2 kg" is hidden while an admin reviews a report.',
+      4,
+    ),
+    notif(
+      andi.id,
+      'CLAIM_CANCELLED',
+      'The claim on "Pepes Ikan (3 bungkus)" was cancelled.',
+      5,
+      true,
+    ),
+    notif(
+      sari.id,
+      'PICKUP_COMPLETED',
+      'Pickup of "Donat Kentang (6 pcs)" is confirmed. Leave a review!',
+      75,
+      true,
+    ),
+    notif(
+      sari.id,
+      'ITEM_TAKEN',
+      '"Brownies Panggang (1 loyang)" is reserved by someone else. You are #2 on the waitlist.',
+      1,
+    ),
+    notif(
+      dewi.id,
+      'LISTING_HIDDEN',
+      '"Jamu Herbal Tradisional (10 botol)" is awaiting admin review.',
+      2,
+    ),
+    notif(
+      agus.id,
+      'LISTING_REMOVED',
+      '"Ayam Kedaluwarsa (bau)" was removed for violating the rules. Your account is suspended.',
+      120,
+      true,
+    ),
+    notif(
+      maya.id,
+      'APPEAL_DECIDED',
+      'Your appeal was rejected. Your account remains suspended.',
+      30,
+    ),
+    notif(
+      admin.id,
+      'NEW_CASE',
+      'Listing "Jamu Herbal Tradisional (10 botol)" needs moderation review.',
+      2,
+    ),
+    notif(
+      admin.id,
+      'NEW_CASE',
+      'Listing "Daging Ayam Mentah 2 kg" was reported: Daging mentah tanpa kemasan, takut tidak higienis.',
+      4,
+    ),
+    notif(admin.id, 'APPEAL_SUBMITTED', 'A suspended user submitted an appeal.', 5),
+  ]);
 
 console.log('Seeded demo data. All accounts use password:', PASSWORD);
 console.table([
-  { account: 'admin@wastable.app', role: 'ADMIN', state: 'moderation queue (2 open cases) + 1 pending appeal' },
-  { account: 'rina@wastable.app', role: 'seller', state: 'urgent + available + reserved (waitlist) + expired (compost)' },
-  { account: 'budi@wastable.app', role: 'buyer', state: 'has an open claim, completed deal, reviews' },
-  { account: 'sari@wastable.app', role: 'seller/buyer', state: 'urgent free bread, referred-to-compost, on waitlist' },
-  { account: 'andi@wastable.app', role: 'seller', state: 'reported listing under review, cancelled deal' },
-  { account: 'dewi@wastable.app', role: 'seller', state: '2 violations, listing awaiting AI-flag review' },
+  {
+    account: 'admin@wastable.app',
+    role: 'ADMIN',
+    state: 'moderation queue (2 open cases) + 1 pending appeal',
+  },
+  {
+    account: 'rina@wastable.app',
+    role: 'seller',
+    state: 'urgent + available + reserved (waitlist) + expired (compost)',
+  },
+  {
+    account: 'budi@wastable.app',
+    role: 'buyer',
+    state: 'has an open claim, completed deal, reviews',
+  },
+  {
+    account: 'sari@wastable.app',
+    role: 'seller/buyer',
+    state: 'urgent free bread, referred-to-compost, on waitlist',
+  },
+  {
+    account: 'andi@wastable.app',
+    role: 'seller',
+    state: 'reported listing under review, cancelled deal',
+  },
+  {
+    account: 'dewi@wastable.app',
+    role: 'seller',
+    state: '2 violations, listing awaiting AI-flag review',
+  },
   { account: 'agus@wastable.app', role: 'suspended', state: 'pending appeal' },
   { account: 'maya@wastable.app', role: 'suspended', state: 'appeal rejected' },
   { account: 'tono@wastable.app', role: 'unverified', state: 'cannot post/claim until verified' },
