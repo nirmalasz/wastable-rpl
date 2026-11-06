@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    env: { NODE_ENV: 'test' },
+    // Keep the email-verification flow under test even while it is switched off by default.
+    env: { NODE_ENV: 'test', EMAIL_VERIFICATION: 'on' },
   },
 });

@@ -28,10 +28,14 @@ export function AccountBanner() {
   async function verify() {
     setBusy(true);
     try {
-      const sent = await call<{ devVerificationToken?: string }>('/auth/resend-verification', {
-        method: 'POST',
-      });
-      if (sent.devVerificationToken) {
+      const sent = await call<{ devVerificationToken?: string; verified?: boolean }>(
+        '/auth/resend-verification',
+        { method: 'POST' },
+      );
+      if (sent.verified) {
+        // Email verification is switched off on the API: the account is active now.
+        refreshUser();
+      } else if (sent.devVerificationToken) {
         // Development only: the API returns the token because no email is delivered.
         await call('/auth/verify-email', { body: { token: sent.devVerificationToken } });
         refreshUser();
