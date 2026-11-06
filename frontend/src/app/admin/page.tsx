@@ -43,16 +43,14 @@ function Admin() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Moderation</h1>
+      <h1 className="text-4xl">Moderation</h1>
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Open cases ({cases.data?.cases.length ?? 0})</h2>
+        <h2 className="text-2xl">Open cases ({cases.data?.cases.length ?? 0})</h2>
         {cases.error && <Alert>{cases.error}</Alert>}
         {cases.loading && !cases.data && <Loading />}
-        {cases.data?.cases.length === 0 && (
-          <p className="text-sm text-slate-500">Queue is empty.</p>
-        )}
+        {cases.data?.cases.length === 0 && <p className="text-sm text-muted">Queue is empty.</p>}
         {cases.data?.cases.map((c) => (
           <Card key={c.id} className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -64,18 +62,18 @@ function Admin() {
                 <Badge tone="danger">seller has {c.sellerViolations} violation(s)</Badge>
               </div>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted">
               Seller {c.sellerName} · {formatDateTime(c.createdAt)}
             </p>
             {c.listingDescription && <p className="text-sm">{c.listingDescription}</p>}
             {(c.aiFlags.length > 0 || c.aiRationale) && (
-              <p className="rounded-md bg-slate-50 p-2 text-sm">
+              <p className="rounded-[10px] bg-surface p-2 text-sm">
                 <strong>AI suggestion:</strong> {c.aiFlags.join(', ') || '–'}
                 {c.aiRationale && ` · ${c.aiRationale}`}
               </p>
             )}
             {c.reports.map((r, i) => (
-              <p key={i} className="text-sm text-slate-700">
+              <p key={i} className="text-sm text-muted">
                 Report: “{r.reason}”
               </p>
             ))}
@@ -92,20 +90,16 @@ function Admin() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">
-          Pending appeals ({appeals.data?.appeals.length ?? 0})
-        </h2>
+        <h2 className="text-2xl">Pending appeals ({appeals.data?.appeals.length ?? 0})</h2>
         {appeals.error && <Alert>{appeals.error}</Alert>}
-        {appeals.data?.appeals.length === 0 && (
-          <p className="text-sm text-slate-500">No appeals.</p>
-        )}
+        {appeals.data?.appeals.length === 0 && <p className="text-sm text-muted">No appeals.</p>}
         {appeals.data?.appeals.map((a) => (
           <Card key={a.id} className="space-y-2">
             <p className="font-semibold">
-              {a.userName} <span className="font-normal text-slate-500">({a.userEmail})</span>
+              {a.userName} <span className="font-normal text-muted">({a.userEmail})</span>
             </p>
             <p className="text-sm">“{a.reason}”</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted">
               {a.violationCount} violations · {formatDateTime(a.createdAt)}
             </p>
             <div className="flex gap-2">

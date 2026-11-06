@@ -1,23 +1,29 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, Card, Input, Loading, Select } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { ListingCard } from '@/features/listings/listing-card';
 import { humanize } from '@/lib/format';
-import { CATEGORIES, type Listing, type SearchFilters } from '@/lib/types';
+import type { Listing, SearchFilters } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
 
 interface Filters {
-  q: string;
-  category: string;
   type: string;
   urgent: boolean;
   maxPrice: string;
   radiusKm: string;
 }
-const EMPTY: Filters = { q: '', category: '', type: '', urgent: false, maxPrice: '', radiusKm: '' };
+const EMPTY: Filters = { type: '', urgent: false, maxPrice: '', radiusKm: '' };
+
+const TYPE_CHIPS = [
+  { value: '', label: 'All' },
+  { value: 'FREE', label: 'Free' },
+  { value: 'SELL', label: 'For sale' },
+  { value: 'EXCHANGE', label: 'Exchange' },
+];
 
 interface ChatResult {
   filters: SearchFilters;
@@ -25,11 +31,22 @@ interface ChatResult {
   remainingAiRequests: number;
 }
 
-/** Browse feed with filters (FR-6) and the conversational Discovery Agent search (FR-17). */
+const grid = 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
+
+/**
+ * Browse feed with filters (FR-6) and the conversational Discovery Agent search (FR-17).
+ * The text query and category come from the URL (top search bar, Food Categories).
+ */
 export function Feed() {
   const { user, call } = useAuth();
-  const [draft, setDraft] = useState<Filters>(EMPTY);
-  const [applied, setApplied] = useState<Filters>(EMPTY);
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const q = params.get('q') ?? '';
+  const category = params.get('category') ?? '';
+
+  const [filters, setFilters] = useState<Filters>(EMPTY);
+  const [maxPriceDraft, setMaxPriceDraft] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number }>();
   const [geoError, setGeoError] = useState<string>();
 
@@ -39,15 +56,15 @@ export function Feed() {
   const [chatResult, setChatResult] = useState<ChatResult>();
 
   const qs = new URLSearchParams();
-  if (applied.q) qs.set('q', applied.q);
-  if (applied.category) qs.set('category', applied.category);
-  if (applied.type) qs.set('type', applied.type);
-  if (applied.urgent) qs.set('urgent', 'true');
-  if (applied.maxPrice) qs.set('maxPrice', applied.maxPrice);
+  if (q) qs.set('q', q);
+  if (category) qs.set('category', category);
+  if (filters.type) qs.set('type', filters.type);
+  if (filters.urgent) qs.set('urgent', 'true');
+  if (filters.maxPrice) qs.set('maxPrice', filters.maxPrice);
   if (coords) {
     qs.set('lat', String(coords.lat));
     qs.set('lng', String(coords.lng));
-    if (applied.radiusKm) qs.set('radiusKm', applied.radiusKm);
+    if (filters.radiusKm) qs.set('radiusKm', filters.radiusKm);
   }
   const feed = useApi<{ results: Listing[] }>(`/search?${qs.toString()}`);
 
@@ -59,18 +76,24 @@ export function Feed() {
     );
   }
 
+  function reset() {
+    setFilters(EMPTY);
+    setMaxPriceDraft('');
+    router.push(pathname);
+  }
+
   async function ask(e: FormEvent) {
     e.preventDefault();
     if (!chat.trim()) return;
     setChatBusy(true);
     setChatError(undefined);
     try {
-      const params = new URLSearchParams({ q: chat });
+      const chatParams = new URLSearchParams({ q: chat });
       if (coords) {
-        params.set('lat', String(coords.lat));
-        params.set('lng', String(coords.lng));
+        chatParams.set('lat', String(coords.lat));
+        chatParams.set('lng', String(coords.lng));
       }
-      setChatResult(await call<ChatResult>(`/search/chat?${params.toString()}`));
+      setChatResult(await call<ChatResult>(`/search/chat?${chatParams.toString()}`));
     } catch (err) {
       setChatError((err as Error).message);
     } finally {
@@ -78,14 +101,25 @@ export function Feed() {
     }
   }
 
-  const chips = chatResult
+  const chatChips = chatResult
     ? Object.entries(chatResult.filters).filter(
         ([, v]) => v !== undefined && v !== null && v !== '',
       )
     : [];
 
+  const chip = (active: boolean) =>
+    `rounded-[10px] bg-accent px-5 py-2 text-sm font-medium text-black shadow-button transition hover:brightness-95 ${
+      active ? 'ring-2 ring-brand-700 ring-offset-2 ring-offset-cream' : ''
+    }`;
+
+  const active = [
+    q && `"${q}"`,
+    category && humanize(category),
+    filters.maxPrice && `≤ Rp ${filters.maxPrice}`,
+  ].filter(Boolean);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Card className="space-y-3">
         <form onSubmit={ask} className="flex flex-wrap gap-2">
           <Input
@@ -95,13 +129,13 @@ export function Feed() {
             className="min-w-60 flex-1"
             aria-label="Conversational search"
           />
-          <Button type="submit" disabled={chatBusy || !user}>
+          <Button type="submit" variant="brand" disabled={chatBusy || !user}>
             {chatBusy ? 'Thinking…' : 'Ask AI'}
           </Button>
         </form>
         {!user && (
-          <p className="text-xs text-slate-500">
-            <Link href="/login" className="underline">
+          <p className="text-xs text-muted">
+            <Link href="/login" className="font-semibold underline">
               Log in
             </Link>{' '}
             to use conversational search.
@@ -111,8 +145,8 @@ export function Feed() {
         {chatResult && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-1 text-sm">
-              <span className="text-slate-500">Understood as:</span>
-              {chips.map(([k, v]) => (
+              <span className="text-muted">Understood as:</span>
+              {chatChips.map(([k, v]) => (
                 <Badge key={k} tone="brand">
                   {humanize(k)}: {String(v)}
                 </Badge>
@@ -126,9 +160,9 @@ export function Feed() {
               </button>
             </div>
             {chatResult.results.length === 0 ? (
-              <p className="text-sm text-slate-500">Nothing matched that request.</p>
+              <p className="text-sm text-muted">Nothing matched that request.</p>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className={grid}>
                 {chatResult.results.map((l) => (
                   <ListingCard key={l.id} listing={l} />
                 ))}
@@ -138,58 +172,53 @@ export function Feed() {
         )}
       </Card>
 
+      {/* Filter chips: the yellow bar from the Figma "Feeds" screen. */}
+      <div className="flex flex-wrap items-center gap-3">
+        {TYPE_CHIPS.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            aria-pressed={filters.type === c.value}
+            onClick={() => setFilters({ ...filters, type: c.value })}
+            className={chip(filters.type === c.value)}
+          >
+            {c.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          aria-pressed={filters.urgent}
+          onClick={() => setFilters({ ...filters, urgent: !filters.urgent })}
+          className={chip(filters.urgent)}
+        >
+          Urgent only
+        </button>
+        <button type="button" onClick={locate} className={chip(Boolean(coords))}>
+          {coords ? 'Near me ✓' : 'Use my location'}
+        </button>
+      </div>
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setApplied(draft);
+          setFilters({ ...filters, maxPrice: maxPriceDraft });
         }}
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-wrap items-center gap-2"
       >
         <Input
-          value={draft.q}
-          onChange={(e) => setDraft({ ...draft, q: e.target.value })}
-          placeholder="Search food…"
-          className="min-w-48 flex-1"
-          aria-label="Search"
-        />
-        <Select
-          value={draft.category}
-          onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-          className="w-auto"
-          aria-label="Category"
-        >
-          <option value="">All categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {humanize(c)}
-            </option>
-          ))}
-        </Select>
-        <Select
-          value={draft.type}
-          onChange={(e) => setDraft({ ...draft, type: e.target.value })}
-          className="w-auto"
-          aria-label="Type"
-        >
-          <option value="">Buy / exchange / free</option>
-          <option value="SELL">For sale</option>
-          <option value="EXCHANGE">Exchange</option>
-          <option value="FREE">Free</option>
-        </Select>
-        <Input
-          value={draft.maxPrice}
-          onChange={(e) => setDraft({ ...draft, maxPrice: e.target.value })}
+          value={maxPriceDraft}
+          onChange={(e) => setMaxPriceDraft(e.target.value)}
           type="number"
           min={0}
           placeholder="Max Rp"
-          className="w-28"
+          className="max-w-40 bg-surface"
           aria-label="Max price"
         />
         {coords && (
           <Select
-            value={draft.radiusKm}
-            onChange={(e) => setDraft({ ...draft, radiusKm: e.target.value })}
-            className="w-auto"
+            value={filters.radiusKm}
+            onChange={(e) => setFilters({ ...filters, radiusKm: e.target.value })}
+            className="max-w-48 bg-surface"
             aria-label="Radius"
           >
             <option value="">Any distance</option>
@@ -200,37 +229,32 @@ export function Feed() {
             ))}
           </Select>
         )}
-        <label className="flex items-center gap-1 text-sm">
-          <input
-            type="checkbox"
-            checked={draft.urgent}
-            onChange={(e) => setDraft({ ...draft, urgent: e.target.checked })}
-          />
-          Urgent only
-        </label>
-        <Button type="submit">Search</Button>
-        <Button type="button" variant="secondary" onClick={locate}>
-          {coords ? 'Location set' : 'Use my location'}
+        <Button type="submit" variant="secondary" className="bg-surface">
+          Apply
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => {
-            setDraft(EMPTY);
-            setApplied(EMPTY);
-          }}
-        >
+        <Button type="button" variant="secondary" className="bg-surface" onClick={reset}>
           Reset
         </Button>
+        {active.length > 0 && (
+          <span className="flex flex-wrap gap-1 text-sm">
+            {active.map((a) => (
+              <Badge key={String(a)} tone="brand">
+                {a}
+              </Badge>
+            ))}
+          </span>
+        )}
       </form>
       {geoError && <Alert>{geoError}</Alert>}
 
       {feed.error && <Alert>Could not load listings: {feed.error}</Alert>}
       {feed.loading && !feed.data && <Loading />}
       {feed.data && feed.data.results.length === 0 && (
-        <p className="text-sm text-slate-500">No available food matches. Try changing filters.</p>
+        <p className="text-sm text-muted">
+          No available food matches. Try widening the distance or removing a filter.
+        </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={grid}>
         {feed.data?.results.map((l) => (
           <ListingCard key={l.id} listing={l} />
         ))}

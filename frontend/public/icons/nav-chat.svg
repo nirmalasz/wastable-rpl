@@ -1,0 +1,12 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="61" height="61" viewBox="0 0 61 61" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="chat_bubble_outline" clip-path="url(#clip0_0_51)">
+<g id="Vector">
+</g>
+<path id="Vector_2" d="M50.8333 5.08333H10.1667C7.37083 5.08333 5.08333 7.37083 5.08333 10.1667V55.9167L15.25 45.75H50.8333C53.6292 45.75 55.9167 43.4625 55.9167 40.6667V10.1667C55.9167 7.37083 53.6292 5.08333 50.8333 5.08333ZM48.2917 40.6667H15.25L10.1667 45.75V12.7083C10.1667 11.3104 11.3104 10.1667 12.7083 10.1667H48.2917C49.6896 10.1667 50.8333 11.3104 50.8333 12.7083V38.125C50.8333 39.5229 49.6896 40.6667 48.2917 40.6667Z" fill="#3B5A14"/>
+</g>
+<defs>
+<clipPath id="clip0_0_51">
+<rect width="61" height="61" fill="white"/>
+</clipPath>
+</defs>
+</svg>

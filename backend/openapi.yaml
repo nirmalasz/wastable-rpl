@@ -1,0 +1,1279 @@
+openapi: 3.1.0
+info:
+  title: WASTABLE API
+  version: 0.1.0
+  description: |
+    REST API for WASTABLE, a surplus-food marketplace. All routes are mounted under `/api`.
+
+    **Authentication:** send `Authorization: Bearer <token>` (token from `/auth/login` or `/auth/register`, valid 7 days).
+    Tokens are invalidated when the password changes.
+
+    **Account states:** `UNVERIFIED` users can log in but cannot post, claim, review or report
+    (`403 Please verify your email first`). `SUSPENDED` users are blocked from the same actions and may appeal.
+
+    **Rate limits:** 120 requests/min per IP on `/api`; 40 per 15 min on auth endpoints;
+    30 uploads per 10 min; per-user write limiter on AI/report/listing-write endpoints.
+    Rate-limit state is returned in `RateLimit` headers (draft-8).
+
+    **Errors:** `{ "error": string, "details"?: object }`. Validation failures (400) also return `fields`.
+servers:
+  - url: http://localhost:4000/api
+    description: Local development (check `PORT` in `.env`)
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Listings
+  - name: Search
+  - name: Transactions
+  - name: Reviews
+  - name: Notifications
+  - name: Moderation
+  - name: Appeals
+  - name: Uploads
+
+paths:
+  /health:
+    get:
+      security: []
+      tags: [Health]
+      summary: Liveness check
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service, time]
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: wastable-api }
+                  time: { type: string, format: date-time }
+
+  # ---------------------------------------------------------------- Auth
+  /auth/register:
+    post:
+      security: []
+      tags: [Auth]
+      summary: Create an account
+      description: Sends a verification email. In non-production, `devVerificationToken` is included in the response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/AuthResponse'
+                  - type: object
+                    properties:
+                      devVerificationToken:
+                        type: string
+                        description: Non-production only.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /auth/login:
+    post:
+      security: []
+      tags: [Auth]
+      summary: Log in
+      description: Accounts are additionally locked for 15 minutes after 10 failed attempts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /auth/verify-email:
+    post:
+      security: []
+      tags: [Auth]
+      summary: Verify email with the emailed token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Email verified (idempotent)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Resend the verification email
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  devVerificationToken: { type: string, description: Non-production only. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /auth/password-reset/request:
+    post:
+      security: []
+      tags: [Auth]
+      summary: Request a password reset email
+      description: Always returns the same response whether or not the account exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  devResetToken: { type: string, description: Non-production only. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /auth/password-reset/confirm:
+    post:
+      security: []
+      tags: [Auth]
+      summary: Set a new password using a reset token
+      description: Reset tokens are single-use and sign out existing sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string, minLength: 1 }
+                password: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '200':
+          description: Password changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Users
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get the current user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEnvelope' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Users]
+      summary: Update the current user's profile
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                locationRadiusKm: { type: integer, minimum: 1, maximum: 50 }
+                contactPreference: { type: [string, 'null'], maxLength: 200 }
+                avatarUrl:
+                  oneOf:
+                    - $ref: '#/components/schemas/UploadUrl'
+                    - type: 'null'
+                homeLat: { type: [number, 'null'], minimum: -90, maximum: 90 }
+                homeLng: { type: [number, 'null'], minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /users/{id}/reviews:
+    get:
+      security: []
+      tags: [Reviews]
+      summary: Reviews received by a user
+      description: Returns the average, total and the 50 most recent reviews.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Review summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+                  average: { type: [number, 'null'] }
+                  total: { type: integer }
+                  reviews:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        rating: { type: integer, minimum: 1, maximum: 5 }
+                        comment: { type: [string, 'null'] }
+                        createdAt: { type: string, format: date-time }
+                        reviewerName: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Listings
+  /listings:
+    post:
+      tags: [Listings]
+      summary: Create a listing
+      description: |
+        Runs moderation first. `PROHIBITED` text is rejected with 403 and counts as a violation.
+        `UNCERTAIN` text creates the listing as `UNDER_REVIEW` (202) and opens a moderation case.
+        Requires a verified account.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingInput' }
+      responses:
+        '201':
+          description: Listing published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listing: { $ref: '#/components/schemas/Listing' }
+        '202':
+          description: Listing created but awaiting admin review
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listing: { $ref: '#/components/schemas/Listing' }
+                  message: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /listings/extract:
+    post:
+      tags: [Listings]
+      summary: AI-assisted listing draft from text and/or a photo
+      description: |
+        Listing Agent. Falls back to a keyword heuristic when the LLM is unavailable (`source: HEURISTIC`).
+        At least one of `text` or `photoUrl` is required. Counts against the user's AI quota.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, maxLength: 2000 }
+                photoUrl: { $ref: '#/components/schemas/UploadUrl' }
+      responses:
+        '200':
+          description: Draft listing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  draft: { $ref: '#/components/schemas/ListingDraft' }
+                  remainingAiRequests: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /listings/mine:
+    get:
+      tags: [Listings]
+      summary: Listings created by the current user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Own listings, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listings:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Listing'
+                        - type: object
+                          properties:
+                            pendingClaim:
+                              type: [object, 'null']
+                              properties:
+                                listingId: { type: string, format: uuid }
+                                transactionId: { type: string, format: uuid }
+                                claimerName: { type: string }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /listings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Listings]
+      summary: Get a listing
+      description: |
+        Auth is optional; when a token is sent, viewer-specific fields are populated.
+        `UNDER_REVIEW` and `REMOVED` listings are only visible to the owner and admins (otherwise 404).
+        Exact pickup coordinates are never returned.
+      security: [{}, { bearerAuth: [] }]
+      responses:
+        '200':
+          description: Listing detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listing: { $ref: '#/components/schemas/Listing' }
+                  sellerReviewCount: { type: integer }
+                  isOwner: { type: boolean }
+                  waitlistCount: { type: integer }
+                  myWaitlistPosition: { type: [integer, 'null'] }
+                  myTransaction:
+                    type: [object, 'null']
+                    properties:
+                      id: { type: string, format: uuid }
+                      status: { $ref: '#/components/schemas/TransactionStatus' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Listings]
+      summary: Update a listing (seller only)
+      description: Only `AVAILABLE` listings can be edited. Changing title/description re-runs moderation.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingUpdate' }
+      responses:
+        '200':
+          description: Updated listing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listing: { $ref: '#/components/schemas/Listing' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Listings]
+      summary: Remove a listing (seller only)
+      description: Soft delete (`status` becomes `REMOVED`). Not allowed while a claim is pending.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Removed }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /listings/{id}/compost-referral:
+    post:
+      tags: [Listings]
+      summary: Refer an expired listing to a compost partner
+      description: Seller only; the listing must be `EXPIRED`. Emails the matching partner (by pickup area) or the first available.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '201':
+          description: Referral created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  referral:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      listingId: { type: string, format: uuid }
+                      partnerId: { type: string, format: uuid }
+                      status: { type: string, enum: [SENT, ACCEPTED, COLLECTED] }
+                      createdAt: { type: string, format: date-time }
+                  partner:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+
+  /listings/{id}/claim:
+    post:
+      tags: [Transactions]
+      summary: Claim a listing
+      description: |
+        Reserves the listing (`PENDING`). Max 3 open claims per user. A claim not completed within
+        24 hours is cancelled by the scheduler. If someone else holds it, 409 returns
+        `details.canJoinWaitlist = true`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '201':
+          description: Claim created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction: { $ref: '#/components/schemas/Transaction' }
+                  listingStatus: { type: string, enum: [PENDING] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /listings/{id}/waitlist:
+    post:
+      tags: [Transactions]
+      summary: Join the waitlist of a reserved listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '201':
+          description: Joined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      listingId: { type: string, format: uuid }
+                      userId: { type: string, format: uuid }
+                      position: { type: integer }
+                      joinedAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /listings/{id}/reports:
+    post:
+      tags: [Moderation]
+      summary: Report a listing
+      description: |
+        Opens (or joins) a moderation case. An `AVAILABLE` listing is hidden (`UNDER_REVIEW`)
+        until an admin decides. You cannot report your own listing or report one twice.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '201':
+          description: Report filed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  caseId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Search
+  /search:
+    get:
+      security: []
+      tags: [Search]
+      summary: Browse and filter available listings
+      description: |
+        Public. Only `AVAILABLE`, unexpired listings. Ordered urgent first, then soonest expiry.
+        Listings without stored coordinates are never excluded by `radiusKm`.
+        Distance is only computed when both `lat` and `lng` are supplied.
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 200 }, description: Free-text keywords. }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/Category' } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/ListingType' } }
+        - { name: maxPrice, in: query, schema: { type: number, minimum: 0 } }
+        - { name: free, in: query, schema: { type: string, enum: ['true', 'false', '1', '0'] } }
+        - { name: urgent, in: query, schema: { type: string, enum: ['true', 'false', '1', '0'] } }
+        - { name: expiresWithinHours, in: query, schema: { type: number, exclusiveMinimum: 0, maximum: 720 } }
+        - { name: lat, in: query, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lng, in: query, schema: { type: number, minimum: -180, maximum: 180 } }
+        - { name: radiusKm, in: query, schema: { type: number, exclusiveMinimum: 0, maximum: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200':
+          description: Matching listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/Listing' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /search/chat:
+    get:
+      tags: [Search]
+      summary: Natural-language search
+      description: |
+        Discovery Agent converts the sentence into filters (heuristic fallback when the LLM is unavailable)
+        and returns up to 30 results. Counts against the user's AI quota.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 300 } }
+        - { name: lat, in: query, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lng, in: query, schema: { type: number, minimum: -180, maximum: 180 } }
+      responses:
+        '200':
+          description: Parsed filters and results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  filters: { $ref: '#/components/schemas/SearchFilters' }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/Listing' }
+                  remainingAiRequests: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Transactions
+  /transactions/mine:
+    get:
+      tags: [Transactions]
+      summary: Transactions where the user is buyer or seller
+      description: The counterpart's contact is hidden once a transaction is `CANCELLED`.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Transactions, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        status: { $ref: '#/components/schemas/TransactionStatus' }
+                        createdAt: { type: string, format: date-time }
+                        completedAt: { type: [string, 'null'], format: date-time }
+                        listingId: { type: string, format: uuid }
+                        listingTitle: { type: string }
+                        listingType: { $ref: '#/components/schemas/ListingType' }
+                        price: { type: number }
+                        pickupArea: { type: string }
+                        sellerId: { type: string, format: uuid }
+                        claimerName: { type: string }
+                        role: { type: string, enum: [BUYER, SELLER] }
+                        counterpart:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            contact: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /transactions/{id}:
+    patch:
+      tags: [Transactions]
+      summary: Complete or cancel a transaction
+      description: |
+        Only the buyer may set `COMPLETED` (confirms pickup). Buyer or seller may set `CANCELLED`,
+        which frees the listing and offers it to the first person on the waitlist.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [COMPLETED, CANCELLED] }
+      responses:
+        '200':
+          description: Updated transaction
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction: { $ref: '#/components/schemas/Transaction' }
+                  listingStatus: { $ref: '#/components/schemas/ListingStatus' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /transactions/{id}/reviews:
+    post:
+      tags: [Reviews]
+      summary: Review the other party of a completed transaction
+      description: One review per participant per transaction.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 1000 }
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  review:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      transactionId: { type: string, format: uuid }
+                      reviewerId: { type: string, format: uuid }
+                      revieweeId: { type: string, format: uuid }
+                      rating: { type: integer }
+                      comment: { type: [string, 'null'] }
+                      createdAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Notifications
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List the 100 most recent notifications
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Notifications and unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  unreadCount: { type: integer }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark one notification as read
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notification: { $ref: '#/components/schemas/Notification' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Moderation (admin)
+  /moderation/cases:
+    get:
+      tags: [Moderation]
+      summary: List moderation cases (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [OPEN, DISMISSED, VIOLATION_CONFIRMED], default: OPEN }
+      responses:
+        '200':
+          description: Up to 100 cases, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cases:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        source: { type: string, enum: [USER_REPORT, AI_FLAG, RULE_FILTER] }
+                        status: { type: string, enum: [OPEN, DISMISSED, VIOLATION_CONFIRMED] }
+                        aiFlags: { type: array, items: { type: string } }
+                        aiRationale: { type: [string, 'null'] }
+                        adminDecision: { type: [string, 'null'] }
+                        createdAt: { type: string, format: date-time }
+                        listingId: { type: string, format: uuid }
+                        listingTitle: { type: string }
+                        listingDescription: { type: [string, 'null'] }
+                        listingStatus: { $ref: '#/components/schemas/ListingStatus' }
+                        sellerId: { type: string, format: uuid }
+                        sellerName: { type: string }
+                        sellerViolations: { type: integer }
+                        reports:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              caseId: { type: string, format: uuid }
+                              reason: { type: string }
+                              createdAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+
+  /moderation/cases/{id}:
+    patch:
+      tags: [Moderation]
+      summary: Decide a moderation case (admin)
+      description: |
+        `DISMISS` restores an under-review listing. `CONFIRM_VIOLATION` removes the listing, cancels open claims,
+        and adds a violation to the seller (3 violations suspend the account).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [DISMISS, CONFIRM_VIOLATION] }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [DISMISSED, VIOLATION_CONFIRMED] }
+                  suspended: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Appeals
+  /appeals:
+    post:
+      tags: [Appeals]
+      summary: Appeal a suspension
+      description: Suspended accounts only; one pending appeal at a time.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '201':
+          description: Appeal submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appeal: { $ref: '#/components/schemas/Appeal' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    get:
+      tags: [Appeals]
+      summary: List appeals (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED], default: PENDING }
+      responses:
+        '200':
+          description: Up to 100 appeals, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appeals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        reason: { type: string }
+                        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+                        createdAt: { type: string, format: date-time }
+                        caseId: { type: [string, 'null'], format: uuid }
+                        userId: { type: string, format: uuid }
+                        userName: { type: string }
+                        userEmail: { type: string, format: email }
+                        violationCount: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+
+  /appeals/mine:
+    get:
+      tags: [Appeals]
+      summary: The current user's appeals
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Own appeals, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appeals:
+                    type: array
+                    items: { $ref: '#/components/schemas/Appeal' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /appeals/{id}:
+    patch:
+      tags: [Appeals]
+      summary: Decide an appeal (admin)
+      description: Approving reactivates the account and resets its violation count.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appeal: { $ref: '#/components/schemas/Appeal' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Uploads
+  /uploads:
+    post:
+      tags: [Uploads]
+      summary: Upload a photo
+      description: |
+        Send the raw image bytes as the request body (not multipart). Max 5 MB. The file type is
+        verified by magic bytes. The returned URL is the only kind accepted for `photoUrl` / `avatarUrl`.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        '201':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { $ref: '#/components/schemas/UploadUrl' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /uploads/{filename}:
+    servers:
+      - url: http://localhost:4000
+        description: Static files are served at the server root, not under /api.
+    get:
+      security: []
+      tags: [Uploads]
+      summary: Fetch an uploaded photo
+      description: Public, immutable, cacheable for 7 days.
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f-]{36}\.(jpg|png|webp)$' }
+      responses:
+        '200':
+          description: The image
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404': { description: Not found }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Access token from `/auth/login` or `/auth/register`.
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        details: { type: object, additionalProperties: true }
+    ValidationError:
+      type: object
+      required: [error, fields]
+      properties:
+        error: { type: string, description: Up to the first three field messages. }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+          description: Map of field path to user-facing message.
+    Ok:
+      type: object
+      properties:
+        ok: { type: boolean }
+
+    Category:
+      type: string
+      enum: [cooked-meal, produce, bakery, packaged, beverage, dairy, other]
+    ListingType:
+      type: string
+      enum: [SELL, EXCHANGE, FREE]
+    ListingStatus:
+      type: string
+      enum: [AVAILABLE, PENDING, COMPLETED, EXPIRED, UNDER_REVIEW, REMOVED, REFERRED_TO_COMPOST]
+    TransactionStatus:
+      type: string
+      enum: [PENDING, COMPLETED, CANCELLED]
+    UploadUrl:
+      type: string
+      maxLength: 300
+      description: URL previously returned by `POST /uploads`.
+      example: http://localhost:4000/uploads/c05714b9-009a-4c49-bf2e-3f98c278da96.png
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [USER, ADMIN] }
+        status: { type: string, enum: [UNVERIFIED, ACTIVE, SUSPENDED] }
+        isVerified: { type: boolean }
+        violationCount: { type: integer }
+        locationRadiusKm: { type: integer }
+        contactPreference: { type: [string, 'null'] }
+        avatarUrl: { type: [string, 'null'] }
+        homeLat: { type: [number, 'null'] }
+        homeLng: { type: [number, 'null'] }
+        createdAt: { type: string, format: date-time }
+    UserEnvelope:
+      type: object
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+
+    ListingInput:
+      type: object
+      required: [title, category, quantity, listingType, expiryDate, pickupArea]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        category: { $ref: '#/components/schemas/Category' }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        listingType: { $ref: '#/components/schemas/ListingType' }
+        price:
+          type: number
+          minimum: 0
+          maximum: 100000000
+          default: 0
+          description: Must be > 0 when `listingType` is `SELL`; stored as 0 otherwise.
+        expiryDate: { type: string, format: date-time, description: Must be in the future. }
+        pickupArea: { type: string, minLength: 1, maxLength: 200 }
+        pickupLat: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        pickupLng: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        photoUrl:
+          oneOf:
+            - $ref: '#/components/schemas/UploadUrl'
+            - type: 'null'
+    ListingUpdate:
+      type: object
+      description: Same fields as `ListingInput`, all optional.
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        category: { $ref: '#/components/schemas/Category' }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        listingType: { $ref: '#/components/schemas/ListingType' }
+        price: { type: number, minimum: 0, maximum: 100000000 }
+        expiryDate: { type: string, format: date-time }
+        pickupArea: { type: string, minLength: 1, maxLength: 200 }
+        pickupLat: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        pickupLng: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        photoUrl:
+          oneOf:
+            - $ref: '#/components/schemas/UploadUrl'
+            - type: 'null'
+    Listing:
+      type: object
+      description: Public listing. Exact pickup coordinates are never exposed.
+      properties:
+        id: { type: string, format: uuid }
+        sellerId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        category: { type: string }
+        quantity: { type: integer }
+        listingType: { $ref: '#/components/schemas/ListingType' }
+        price: { type: number }
+        expiryDate: { type: string, format: date-time }
+        pickupArea: { type: string }
+        isUrgent: { type: boolean, description: Expires within 3 hours. }
+        status: { $ref: '#/components/schemas/ListingStatus' }
+        dietFlags: { type: array, items: { type: string } }
+        photoUrl: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        sellerName: { type: string }
+        sellerAvatarUrl: { type: [string, 'null'] }
+        sellerRating: { type: [number, 'null'] }
+        distanceKm: { type: [number, 'null'], description: Only in search results when lat/lng are given. }
+    ListingDraft:
+      type: object
+      properties:
+        title: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        quantity: { type: integer, minimum: 1 }
+        expiryDate: { type: string, format: date-time }
+        description: { type: string }
+        listingType: { $ref: '#/components/schemas/ListingType' }
+        price: { type: number }
+        source: { type: string, enum: [AI, HEURISTIC] }
+    SearchFilters:
+      type: object
+      properties:
+        query: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        maxPrice: { type: number }
+        freeOnly: { type: boolean }
+        expiresWithinHours: { type: number }
+        radiusKm: { type: number }
+
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        listingId: { type: string, format: uuid }
+        claimerId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/TransactionStatus' }
+        completedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        type:
+          type: string
+          description: e.g. CLAIM_REQUEST, PICKUP_COMPLETED, ITEM_TAKEN, NEW_REVIEW, NEW_CASE, LISTING_HIDDEN, LISTING_RESTORED, LISTING_REMOVED, LISTING_EXPIRED, CLAIM_CANCELLED, REPORT_DISMISSED, REPORT_ACTIONED, APPEAL_SUBMITTED, APPEAL_DECIDED.
+        message: { type: string }
+        channel: { type: string, enum: [IN_APP, EMAIL, PUSH] }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Appeal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        caseId: { type: [string, 'null'], format: uuid }
+        reason: { type: string }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }

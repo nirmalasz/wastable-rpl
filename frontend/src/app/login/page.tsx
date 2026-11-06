@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { Alert, Button, Card, Field, Input } from '@/components/ui';
+import { AuthInput, AuthLayout, authButton } from '@/components/auth-layout';
+import { Alert } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 
 export default function LoginPage() {
@@ -27,28 +28,42 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="mx-auto max-w-sm space-y-4">
-      <h1 className="text-xl font-bold">Log in</h1>
-      <form onSubmit={onSubmit} className="space-y-3">
-        <Field label="Email">
-          <Input name="email" type="email" required autoComplete="email" />
-        </Field>
-        <Field label="Password">
-          <Input name="password" type="password" required autoComplete="current-password" />
-        </Field>
+    <AuthLayout title="Log in">
+      <form onSubmit={onSubmit} className="space-y-4">
+        <AuthInput
+          name="email"
+          type="email"
+          required
+          autoComplete="email"
+          placeholder="email"
+          aria-label="Email"
+        />
+        <AuthInput
+          name="password"
+          type="password"
+          required
+          autoComplete="current-password"
+          placeholder="password"
+          aria-label="Password"
+        />
         {error && <Alert>{error}</Alert>}
-        <Button type="submit" disabled={busy} className="w-full">
-          {busy ? 'Logging in…' : 'Log in'}
-        </Button>
+        <button type="submit" disabled={busy} className={`${authButton} mt-2`}>
+          {busy ? 'Logging in…' : 'Login'}
+        </button>
       </form>
-      <p className="space-x-3 text-sm">
-        <Link href="/register" className="text-brand-700 underline">
-          Create an account
-        </Link>
-        <Link href="/reset" className="text-brand-700 underline">
-          Forgot password?
-        </Link>
-      </p>
-    </Card>
+      <div className="mt-6 space-y-2 text-center text-lg italic">
+        <p>
+          Don’t have an account?{' '}
+          <Link href="/register" className="font-semibold hover:underline">
+            Register
+          </Link>
+        </p>
+        <p className="text-base">
+          <Link href="/reset" className="text-brand-700 hover:underline">
+            Forgot password?
+          </Link>
+        </p>
+      </div>
+    </AuthLayout>
   );
 }
