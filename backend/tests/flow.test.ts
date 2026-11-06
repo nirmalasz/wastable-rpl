@@ -1,22 +1,13 @@
 import { eq } from 'drizzle-orm';
-import { Pool } from 'pg';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { getDb } from '../src/db/client.js';
 import { users } from '../src/db/schema.js';
 import { runListingMaintenanceJob } from '../src/modules/scheduler/jobs.js';
+import { dbUp } from './helpers/db.js';
 
 /** End-to-end marketplace flow against the real database. Skipped when PostgreSQL is not reachable. */
-const probe = new Pool({
-  connectionString: 'postgres://wastable:wastable@localhost:5432/wastable',
-  connectionTimeoutMillis: 1500,
-});
-const dbUp = await probe
-  .query('select 1 from users limit 1')
-  .then(() => true)
-  .catch(() => false);
-await probe.end();
 
 const app = createApp();
 const run = Date.now();
@@ -226,6 +217,10 @@ describe.skipIf(!dbUp)('marketplace flow', () => {
       decision: 'APPROVE',
     });
     expect(resolved.body.appeal.status).toBe('APPROVED');
+    const mine = await request(app).get('/api/appeals/mine').set(bearer(seller.token));
+    expect(mine.body.appeals).toEqual([
+      expect.objectContaining({ id: appeal.body.appeal.id, status: 'APPROVED' }),
+    ]);
     const me = await request(app).get('/api/users/me').set(bearer(seller.token));
     expect(me.body.user).toMatchObject({ status: 'ACTIVE', violationCount: 0 });
   });

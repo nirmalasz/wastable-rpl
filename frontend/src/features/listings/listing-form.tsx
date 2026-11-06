@@ -60,12 +60,14 @@ const fromListing = (l: Listing, pin: LatLng | null): FormState => ({
 });
 
 /** A sale at Rp 0 is a giveaway; the API stores it as FREE as well. */
-const offerOf = (f: FormState): { listingType: ListingType; price: number } =>
+export const offerOf = (
+  f: Pick<FormState, 'listingType' | 'price'>,
+): { listingType: ListingType; price: number } =>
   f.listingType === 'SELL' && Number(f.price || 0) <= 0
     ? { listingType: 'FREE', price: 0 }
     : { listingType: f.listingType, price: f.listingType === 'SELL' ? Number(f.price) : 0 };
 
-const mapLink = ({ lat, lng }: LatLng) =>
+export const mapLink = ({ lat, lng }: LatLng) =>
   `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`;
 
 /**

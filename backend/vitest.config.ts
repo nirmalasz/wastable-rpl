@@ -7,6 +7,13 @@ export default defineConfig({
     // The DB-backed files share one real database and the scheduler's job lock, so running
     // them in parallel makes results depend on timing. One file at a time keeps them stable.
     fileParallelism: false,
+    // `npm run test:coverage -w backend`; the HTML report lands in backend/coverage/.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/server.ts', 'src/db/seed.ts'],
+      reporter: ['text-summary', 'html'],
+    },
     // Keep the email-verification flow under test even while it is switched off by default.
     // Blank AI keys so a developer's real key in .env is never used (or billed) by tests;
     // AI tests mock the model instead.

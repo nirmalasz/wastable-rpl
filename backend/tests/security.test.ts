@@ -1,7 +1,6 @@
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
-import { Pool } from 'pg';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -10,17 +9,9 @@ import { transactions, users } from '../src/db/schema.js';
 import { MAX_FAILED_LOGINS, MAX_OPEN_CLAIMS } from '../src/lib/constants.js';
 import { uploadDir } from '../src/lib/storage.js';
 import { runListingMaintenanceJob } from '../src/modules/scheduler/jobs.js';
+import { dbUp } from './helpers/db.js';
 
 /** Security behaviours against the real database. Skipped when PostgreSQL is not reachable. */
-const probe = new Pool({
-  connectionString: 'postgres://wastable:wastable@localhost:5432/wastable',
-  connectionTimeoutMillis: 1500,
-});
-const dbUp = await probe
-  .query('select 1 from users limit 1')
-  .then(() => true)
-  .catch(() => false);
-await probe.end();
 
 const app = createApp();
 const run = Date.now();

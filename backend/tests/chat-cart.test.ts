@@ -1,19 +1,10 @@
-import { Pool } from 'pg';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { runListingMaintenanceJob } from '../src/modules/scheduler/jobs.js';
+import { dbUp } from './helpers/db.js';
 
 /** Chat, cart and the endpoints the flow tests do not reach. Skipped without PostgreSQL. */
-const probe = new Pool({
-  connectionString: 'postgres://wastable:wastable@localhost:5432/wastable',
-  connectionTimeoutMillis: 1500,
-});
-const dbUp = await probe
-  .query('select 1 from users limit 1')
-  .then(() => true)
-  .catch(() => false);
-await probe.end();
 
 const app = createApp();
 const run = Date.now();
@@ -173,12 +164,34 @@ describe.skipIf(!dbUp)('endpoints the flow tests skip', () => {
     expect(search.body.filters).toBeTypeOf('object');
   });
 
-  it('marks all notifications read', async () => {
-    const { seller } = await trade('notes');
+  it('marks one notification, or all of them, as read', async () => {
+    const { seller, buyer, trxId } = await trade('notes');
+    // The claim and a chat message give the seller two unread notifications.
+    await post(thread(trxId), buyer.token, { text: 'Halo' });
     const before = await get('/api/notifications', seller.token);
-    expect(before.body.unreadCount).toBeGreaterThan(0);
+    expect(before.body.unreadCount).toBeGreaterThan(1);
+
+    const first = before.body.notifications[0] as { id: string };
+    // Someone else cannot mark it; the owner can.
+    expect((await patch(`/api/notifications/${first.id}/read`, buyer.token, {})).status).toBe(404);
+    const one = await patch(`/api/notifications/${first.id}/read`, seller.token, {});
+    expect(one.body.notification).toMatchObject({ id: first.id, isRead: true });
+    expect((await get('/api/notifications', seller.token)).body.unreadCount).toBe(
+      before.body.unreadCount - 1,
+    );
+
     expect((await post('/api/notifications/read-all', seller.token)).status).toBe(200);
     expect((await get('/api/notifications', seller.token)).body.unreadCount).toBe(0);
+  });
+
+  it('previews a pin address: login required, coordinates validated, null when off', async () => {
+    const u = await signUp('geo');
+    expect((await request(app).get('/api/geocode/reverse?lat=-6.36&lng=106.83')).status).toBe(401);
+    expect((await get('/api/geocode/reverse?lat=200&lng=106.83', u.token)).status).toBe(400);
+    // Tests run with GEOCODER=off, so no request leaves the machine.
+    const off = await get('/api/geocode/reverse?lat=-6.36&lng=106.83', u.token);
+    expect(off.status).toBe(200);
+    expect(off.body).toEqual({ result: null });
   });
 
   it('resends verification only to unverified accounts', async () => {

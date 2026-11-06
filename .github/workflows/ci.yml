@@ -23,6 +23,25 @@ jobs:
       matrix:
         app: [backend, frontend]
 
+    # The backend's integration tests need a real database (same settings as docker-compose.yml).
+    # The frontend job does not use it; starting it there costs a few seconds.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: wastable
+          POSTGRES_PASSWORD: wastable
+          POSTGRES_DB: wastable
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U wastable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://wastable:wastable@localhost:5432/wastable
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -41,6 +60,10 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck -w ${{ matrix.app }}
+
+      - name: Migrate test database
+        if: matrix.app == 'backend'
+        run: npm run db:migrate -w backend
 
       - name: Test
         run: npm run test -w ${{ matrix.app }} --if-present
