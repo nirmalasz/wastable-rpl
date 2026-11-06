@@ -20,9 +20,25 @@ const envSchema = z
     JWT_SECRET: z.string().min(32).default(DEV_JWT_SECRET),
     PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(10),
 
+    /** Which LLM the AI agents use. Both have free tiers; see .env.example. */
+    AI_PROVIDER: z.enum(['gemini', 'groq']).default('gemini'),
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_MODEL: z.string().default('gemini-flash-latest'),
+    GROQ_API_KEY: z.string().optional(),
+    /** Smallest Groq model that still handles our JSON prompts reliably (see docs in .env.example). */
+    GROQ_MODEL: z.string().default('openai/gpt-oss-20b'),
+    /** Send photos to Groq; only turn on with a vision-capable GROQ_MODEL. */
+    GROQ_VISION: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     AI_DAILY_REQUEST_LIMIT: z.coerce.number().int().positive().default(20),
+
+    /**
+     * "off": new accounts are active immediately and no verification email is sent
+     * (use until SMTP is set up). "on": users must verify their email before posting/claiming.
+     */
+    EMAIL_VERIFICATION: z.enum(['on', 'off']).default('off'),
 
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.coerce.number().int().positive().default(587),

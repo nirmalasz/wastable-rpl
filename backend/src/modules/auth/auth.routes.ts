@@ -20,6 +20,7 @@ const ACCESS_TTL_SECONDS = 7 * 24 * 3600;
 const VERIFY_TTL_SECONDS = 24 * 3600;
 const LOGIN_FAIL_WINDOW_SECONDS = 15 * 60;
 const exposeTokens = env.NODE_ENV !== 'production';
+const verificationOn = env.EMAIL_VERIFICATION === 'on';
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60_000,
@@ -77,10 +78,20 @@ authRouter.post('/auth/register', authLimiter, async (req, res) => {
 
   const [created] = await db
     .insert(users)
-    .values({ name: body.name, email: body.email, passwordHash: await hashPassword(body.password) })
+    .values({
+      name: body.name,
+      email: body.email,
+      passwordHash: await hashPassword(body.password),
+      // With verification off there is no email step, so the account is usable right away.
+      ...(verificationOn ? {} : { status: 'ACTIVE' as const }),
+    })
     .returning();
   if (!created) throw new Error('user insert failed');
 
+  if (!verificationOn) {
+    res.status(201).json({ token: accessToken(created), user: toPublicUser(created) });
+    return;
+  }
   const verifyTokenValue = signToken({ sub: created.id, purpose: 'verify' }, VERIFY_TTL_SECONDS);
   await sendMail(
     created.email,
@@ -116,6 +127,16 @@ authRouter.post('/auth/resend-verification', requireAuth, async (_req, res) => {
   const me = currentUser(res);
   const [row] = await getDb().select().from(users).where(eq(users.id, me.id));
   if (!row || row.status !== 'UNVERIFIED') throw HttpError.badRequest('Email is already verified');
+  if (!verificationOn) {
+    // Accounts created while verification was on can be unlocked without an email.
+    const [updated] = await getDb()
+      .update(users)
+      .set({ status: 'ACTIVE', updatedAt: new Date() })
+      .where(eq(users.id, row.id))
+      .returning();
+    res.json({ ok: true, verified: true, user: toPublicUser(updated ?? row) });
+    return;
+  }
   const token = signToken({ sub: row.id, purpose: 'verify' }, VERIFY_TTL_SECONDS);
   await sendMail(row.email, 'Verify your WASTABLE email', `Verification token: ${token}`);
   res.json({ ok: true, ...(exposeTokens ? { devVerificationToken: token } : {}) });

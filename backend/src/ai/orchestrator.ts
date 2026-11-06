@@ -5,11 +5,12 @@ import { getDb } from '../db/client.js';
 import { aiRequestLogs } from '../db/schema.js';
 import { kvDecr, kvGet, kvIncr, kvSet } from '../lib/kv.js';
 import { logger } from '../lib/logger.js';
-import { callGemini, type GeminiPart } from './gemini.js';
+import type { GeminiPart } from './gemini.js';
+import { callModel, llmProvider } from './llm.js';
 import { AiQuotaError, AiUnavailableError, type AgentType } from './types.js';
 
 /**
- * Agent Orchestrator: the single place that talks to Gemini.
+ * Agent Orchestrator: the single place that talks to the LLM (Gemini or Groq, see llm.ts).
  *  - enforces the per-user daily AI quota (env.AI_DAILY_REQUEST_LIMIT)
  *  - caches identical prompts
  *  - requests JSON output and validates it against a zod schema
@@ -17,8 +18,9 @@ import { AiQuotaError, AiUnavailableError, type AgentType } from './types.js';
  * Callers must handle AiUnavailableError by falling back to rule-based behaviour.
  */
 export const aiConfig = {
-  enabled: Boolean(env.GEMINI_API_KEY),
-  model: env.GEMINI_MODEL,
+  enabled: llmProvider.enabled,
+  provider: llmProvider.name,
+  model: llmProvider.model,
   dailyLimit: env.AI_DAILY_REQUEST_LIMIT,
 };
 
@@ -76,15 +78,17 @@ export async function runAgent<T>(opts: RunAgentOptions<T>): Promise<{ data: T; 
   }
 
   try {
-    const raw = await callGemini([{ text: opts.prompt }, ...(opts.extraParts ?? [])]);
+    const raw = await callModel([{ text: opts.prompt }, ...(opts.extraParts ?? [])]);
     let json: unknown;
     try {
       json = JSON.parse(extractJson(raw));
     } catch {
-      throw new AiUnavailableError('Gemini returned invalid JSON');
+      throw new AiUnavailableError('The AI model returned invalid JSON');
     }
     const parsed = opts.schema.safeParse(json);
-    if (!parsed.success) throw new AiUnavailableError('Gemini output did not match the schema');
+    if (!parsed.success) {
+      throw new AiUnavailableError('The AI model output did not match the schema');
+    }
     await kvSet(cacheKey, JSON.stringify(parsed.data), CACHE_TTL_SECONDS);
     await logUsage(opts, promptHash, false);
     return { data: parsed.data, cached: false };

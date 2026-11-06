@@ -14,7 +14,7 @@ const schema = z.object({
 
 /**
  * Discovery Agent (FR-17): converts a natural-language query into search filters.
- * Falls back to simple keyword rules when Gemini is unavailable.
+ * Falls back to simple keyword rules when the AI model is unavailable.
  */
 export async function parseSearchQuery(text: string, userId: string): Promise<SearchFilters> {
   const prompt = [
