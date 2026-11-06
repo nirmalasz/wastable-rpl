@@ -122,6 +122,24 @@ describe.skipIf(!dbUp)('marketplace flow', () => {
     ).toBe(409);
     const reviews = await request(app).get(`/api/users/${seller.id}/reviews`);
     expect(reviews.body.average).toBe(5);
+    expect(reviews.body.reviews[0].reviewerRole).toBe('BUYER');
+
+    // The seller rates the buyer back; the label flips.
+    const sellerView = await request(app).get('/api/transactions/mine').set(bearer(seller.token));
+    const sold = sellerView.body.transactions.find((t: { id: string }) => t.id === trxId);
+    expect(sold.counterpart.id).toBe(buyer.id);
+    expect(sold.reviewedByMe).toBe(false);
+    expect(
+      (await post(`/api/transactions/${trxId}/reviews`, seller.token, { rating: 4 })).status,
+    ).toBe(201);
+    const buyerReviews = await request(app).get(`/api/users/${buyer.id}/reviews`);
+    expect(buyerReviews.body.reviews[0].reviewerRole).toBe('SELLER');
+
+    // A completed listing no longer shows on the seller's public profile.
+    const profile = await request(app).get(`/api/users/${seller.id}/listings`);
+    expect(profile.status).toBe(200);
+    expect(profile.body.user.id).toBe(seller.id);
+    expect(profile.body.listings.some((l: { id: string }) => l.id === id)).toBe(false);
   });
 
   it('cancelling a claim re-offers the listing to the waitlist', async () => {

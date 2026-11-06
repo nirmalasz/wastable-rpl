@@ -8,6 +8,7 @@ import { RequireAuth } from '@/components/require-auth';
 import { Alert, Badge, Loading } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { chatTime, useChatThreads, type ChatMessage } from '@/features/chat';
+import { ReviewForm } from '@/features/reviews';
 import { humanize } from '@/lib/format';
 import type { Transaction } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
@@ -34,25 +35,25 @@ function ThreadRow({
   onSelect: () => void;
 }) {
   return (
-    <li className="border-b-2 border-[#d9d9d9] last:border-b-0">
+    <li className="border-b border-[#d9d9d9] last:border-b-0">
       <button
         type="button"
         onClick={onSelect}
         aria-current={active}
-        className={`flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-cream ${
+        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-cream ${
           active ? 'bg-cream' : ''
         }`}
       >
-        <Avatar name={trx.counterpart.name} size={68} />
+        <Avatar url={trx.counterpart.avatarUrl} name={trx.counterpart.name} size={48} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[28px] leading-tight font-bold italic text-ink">
+          <span className="block truncate text-base font-bold italic text-ink">
             {trx.counterpart.name}
           </span>
-          <span className="block truncate text-xl font-medium text-ink">
+          <span className="block truncate text-sm text-ink">
             {last ? last.text : trx.listingTitle}
           </span>
         </span>
-        <span className="self-start text-xl font-medium tracking-[-1px] text-[#9c9c9c]">
+        <span className="self-start text-xs font-medium text-[#9c9c9c]">
           {chatTime(last?.sentAt ?? trx.createdAt)}
         </span>
       </button>
@@ -64,7 +65,7 @@ function Bubble({ m }: { m: ChatMessage }) {
   return (
     <div className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'}`}>
       <p
-        className={`max-w-[80%] rounded-[10px] px-5 py-4 text-xl font-medium break-words shadow-[0_1.2px_1.2px_0_rgb(0_0_0/0.25)] sm:text-[25px] ${
+        className={`max-w-[75%] rounded-[10px] px-4 py-2 text-base font-medium break-words shadow-[0_1.2px_1.2px_0_rgb(0_0_0/0.25)] ${
           m.mine
             ? 'rounded-tr-none bg-brand-500 text-white'
             : 'rounded-tl-none bg-cream text-brand-700'
@@ -72,7 +73,7 @@ function Bubble({ m }: { m: ChatMessage }) {
       >
         {m.text}
       </p>
-      <span className="mt-1 px-1 text-sm font-medium text-ink/80">{chatTime(m.sentAt)}</span>
+      <span className="mt-1 px-1 text-xs font-medium text-ink/80">{chatTime(m.sentAt)}</span>
     </div>
   );
 }
@@ -82,11 +83,13 @@ function Thread({
   messages,
   onSend,
   onBack,
+  onReviewed,
 }: {
   trx: Transaction;
   messages: ChatMessage[];
   onSend: (text: string) => void;
   onBack: () => void;
+  onReviewed: () => void;
 }) {
   const [text, setText] = useState('');
   const [showInfo, setShowInfo] = useState(false);
@@ -106,29 +109,40 @@ function Thread({
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[17px] bg-brand-50 shadow-card">
-      <header className="relative flex items-center gap-3 rounded-t-[17px] bg-white px-5 py-3.5">
+      <header className="relative flex items-center gap-3 rounded-t-[17px] bg-white px-4 py-2">
         <button
           type="button"
           onClick={onBack}
-          className="text-2xl text-ink lg:hidden"
+          className="text-xl text-ink lg:hidden"
           aria-label="Back to conversations"
         >
           ←
         </button>
-        <Avatar name={trx.counterpart.name} size={68} />
-        <h2 className="min-w-0 flex-1 truncate font-sans text-[28px] font-bold italic text-ink">
-          {trx.counterpart.name}
-        </h2>
+        <Link
+          href={`/users/${trx.counterpart.id}`}
+          className="flex min-w-0 flex-1 items-center gap-3 hover:underline"
+          title={`See ${trx.counterpart.name}'s listings and ratings`}
+        >
+          <Avatar url={trx.counterpart.avatarUrl} name={trx.counterpart.name} size={40} />
+          <span className="min-w-0">
+            <h2 className="truncate font-sans text-base font-bold italic text-ink">
+              {trx.counterpart.name}
+            </h2>
+            <span className="block text-xs text-muted">
+              {trx.role === 'BUYER' ? 'Seller' : 'Buyer'} · view profile
+            </span>
+          </span>
+        </Link>
         <button
           type="button"
           onClick={() => setShowInfo((s) => !s)}
           aria-expanded={showInfo}
           aria-label="Trade details"
-          className="flex gap-1.5 rounded-full p-2 hover:bg-cream"
+          className="flex gap-1 rounded-full p-2 hover:bg-cream"
         >
-          <img src="/icons/dot.svg" alt="" width={13} height={13} />
-          <img src="/icons/dot.svg" alt="" width={13} height={13} />
-          <img src="/icons/dot.svg" alt="" width={13} height={13} />
+          <img src="/icons/dot.svg" alt="" width={8} height={8} />
+          <img src="/icons/dot.svg" alt="" width={8} height={8} />
+          <img src="/icons/dot.svg" alt="" width={8} height={8} />
         </button>
         {showInfo && (
           <div className="absolute top-full right-4 z-10 mt-2 w-72 space-y-1 rounded-[14px] bg-white p-4 text-sm shadow-card">
@@ -148,14 +162,20 @@ function Thread({
             {trx.counterpart.contact && (
               <p className="text-muted">Contact: {trx.counterpart.contact}</p>
             )}
-            <Link href="/dashboard" className="block pt-1 text-brand-700 underline">
+            <Link
+              href={`/users/${trx.counterpart.id}`}
+              className="block pt-1 text-brand-700 underline"
+            >
+              {trx.counterpart.name}&apos;s listings and ratings
+            </Link>
+            <Link href="/dashboard" className="block text-brand-700 underline">
               Manage in dashboard
             </Link>
           </div>
         )}
       </header>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <p className="mx-auto max-w-sm rounded-[10px] bg-white/70 px-4 py-3 text-center text-sm text-ink">
             Say hi to arrange pickup for <strong>{trx.listingTitle}</strong>.
@@ -167,9 +187,26 @@ function Thread({
         <div ref={bottom} />
       </div>
 
-      <div className="relative px-6 pb-6">
+      {trx.status === 'COMPLETED' && (
+        <div className="px-4 pb-2">
+          {trx.reviewedByMe ? (
+            <p className="text-center text-xs text-brand-700">
+              Trade completed · you reviewed this {trx.role === 'BUYER' ? 'seller' : 'buyer'}.
+            </p>
+          ) : (
+            <ReviewForm
+              transactionId={trx.id}
+              role={trx.role}
+              counterpartName={trx.counterpart.name}
+              onDone={onReviewed}
+            />
+          )}
+        </div>
+      )}
+
+      <div className="relative px-4 pb-4">
         {showQuick && (
-          <ul className="absolute bottom-full left-6 mb-2 space-y-1 rounded-[14px] bg-white p-2 shadow-card">
+          <ul className="absolute bottom-full left-4 mb-2 space-y-1 rounded-[14px] bg-white p-2 shadow-card">
             {QUICK_REPLIES.map((q) => (
               <li key={q}>
                 <button
@@ -188,14 +225,14 @@ function Thread({
         )}
         <form
           onSubmit={submit}
-          className="flex h-[58px] items-center gap-3 rounded-[17px] bg-white/80 pr-2 pl-3"
+          className="flex h-12 items-center gap-2 rounded-[16px] bg-white/80 pr-1 pl-3"
         >
           <button
             type="button"
             onClick={() => setShowQuick((s) => !s)}
             aria-label="Quick replies"
             aria-expanded={showQuick}
-            className="w-8 text-[45px] leading-none font-medium text-ink"
+            className="w-6 text-2xl leading-none font-medium text-ink"
           >
             +
           </button>
@@ -205,26 +242,26 @@ function Thread({
             placeholder="Chat Input"
             aria-label="Message"
             maxLength={1000}
-            className="min-w-0 flex-1 bg-transparent text-xl font-medium text-ink placeholder:text-ink focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-base text-ink placeholder:text-ink/60 focus:outline-none"
           />
           <button
             type="submit"
             aria-label="Send"
             disabled={!text.trim()}
-            className="relative flex size-[43px] shrink-0 items-center justify-center transition hover:brightness-95 disabled:opacity-60"
+            className="relative flex size-10 shrink-0 items-center justify-center transition hover:brightness-95 disabled:opacity-60"
           >
             <img
               src="/icons/send-bg.svg"
               alt=""
-              width={43}
-              height={43}
+              width={40}
+              height={40}
               className="absolute inset-0"
             />
             <img
               src="/icons/send.svg"
               alt=""
-              width={17}
-              height={26}
+              width={13}
+              height={20}
               className="relative rotate-45"
             />
           </button>
@@ -264,21 +301,21 @@ function Chat() {
         Messages are saved on this device only for now. Use the contact under ••• to reach your
         trade partner directly.
       </p>
-      <div className="grid h-[calc(100vh-11rem)] min-h-[520px] gap-3 lg:grid-cols-[535fr_754fr]">
+      <div className="grid h-[calc(100vh-11rem)] max-h-[720px] min-h-[480px] gap-4 lg:grid-cols-[320px_1fr]">
         <aside
           className={`min-h-0 flex-col overflow-hidden rounded-[17px] bg-white shadow-card ${
             active ? 'hidden lg:flex' : 'flex'
           }`}
         >
-          <label className="mx-3 mt-4 mb-2 flex h-14 items-center gap-2 rounded-[30px] bg-[#e8e8e8] px-6">
+          <label className="mx-3 mt-3 mb-2 flex h-10 items-center gap-2 rounded-[24px] bg-[#e8e8e8] px-4">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search"
               aria-label="Search conversations"
-              className="min-w-0 flex-1 bg-transparent text-2xl font-bold italic text-ink placeholder:text-[#9c9c9c] focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent text-base font-bold italic text-ink placeholder:text-[#9c9c9c] focus:outline-none"
             />
-            <img src="/icons/search-grey.svg" alt="" width={26} height={26} />
+            <img src="/icons/search-grey.svg" alt="" width={20} height={20} />
           </label>
           {shown.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted">
@@ -307,6 +344,7 @@ function Chat() {
             messages={threads[active.id] ?? []}
             onSend={(text) => send(active.id, text)}
             onBack={() => select(null)}
+            onReviewed={trx.reload}
           />
         ) : (
           <section className="hidden items-center justify-center rounded-[17px] bg-brand-50 p-6 text-center text-ink shadow-card lg:flex">

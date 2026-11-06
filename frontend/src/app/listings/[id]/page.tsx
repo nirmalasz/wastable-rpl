@@ -8,6 +8,7 @@ import { Avatar } from '@/components/avatar';
 import { Alert, Badge, Button, Field, Input, Loading } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { ListingCard, priceLabel } from '@/features/listings/listing-card';
+import { Stars } from '@/features/reviews';
 import { formatDateTime, humanize, timeLeft } from '@/lib/format';
 import type { Listing, ListingDetail } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
@@ -16,27 +17,6 @@ import { useApi } from '@/lib/use-api';
 
 const safeBy = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
-
-function Stars({ rating }: { rating: number | null | undefined }) {
-  const filled = Math.round(rating ?? 0);
-  return (
-    <div
-      className="flex gap-1"
-      aria-label={rating != null ? `${rating.toFixed(1)} of 5` : 'No ratings yet'}
-    >
-      {[1, 2, 3, 4, 5].map((n) => (
-        <img
-          key={n}
-          src="/icons/star.svg"
-          alt=""
-          width={44}
-          height={44}
-          className={n <= filled ? '' : 'opacity-30 grayscale'}
-        />
-      ))}
-    </div>
-  );
-}
 
 function SimilarListings({ listing }: { listing: Listing }) {
   const similar = useApi<{ results: Listing[] }>(
@@ -177,23 +157,27 @@ export default function ListingPage() {
             <p className="text-center text-xs text-muted">Verify your email to claim items.</p>
           )}
 
-          <div className="space-y-4 rounded-[20px] bg-brand-300 p-6">
+          <Link
+            href={`/users/${l.sellerId}`}
+            className="block space-y-4 rounded-[20px] bg-brand-300 p-6 transition hover:brightness-95"
+            title={`See ${l.sellerName}'s listings and ratings`}
+          >
             <div className="flex items-center gap-4">
               {l.sellerAvatarUrl ? (
                 <Avatar url={l.sellerAvatarUrl} name={l.sellerName ?? '?'} size={91} />
               ) : (
                 <img src="/icons/seller-avatar.svg" alt="" width={91} height={91} />
               )}
-              <div>
-                <p className="text-3xl font-medium text-black">{l.sellerName}</p>
-                <p className="text-sm text-ink">
+              <div className="min-w-0">
+                <p className="truncate text-2xl font-medium text-black">{l.sellerName}</p>
+                <p className="text-base text-ink">
                   {detail.data.sellerReviewCount} review
-                  {detail.data.sellerReviewCount === 1 ? '' : 's'}
+                  {detail.data.sellerReviewCount === 1 ? '' : 's'} · see profile →
                 </p>
               </div>
             </div>
-            <Stars rating={l.sellerRating} />
-          </div>
+            <Stars value={l.sellerRating ?? 0} size={40} />
+          </Link>
         </div>
 
         {/* Right column: details */}

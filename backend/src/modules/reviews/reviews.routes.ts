@@ -62,7 +62,7 @@ reviewsRouter.get('/users/:id/reviews', async (req, res) => {
   const { id } = idParam.parse(req.params);
   const db = getDb();
   const [user] = await db
-    .select({ id: users.id, name: users.name })
+    .select({ id: users.id, name: users.name, avatarUrl: users.avatarUrl })
     .from(users)
     .where(eq(users.id, id));
   if (!user) throw HttpError.notFound('User not found');
@@ -77,10 +77,14 @@ reviewsRouter.get('/users/:id/reviews', async (req, res) => {
       rating: reviews.rating,
       comment: reviews.comment,
       createdAt: reviews.createdAt,
+      reviewerId: reviews.reviewerId,
       reviewerName: users.name,
+      reviewerAvatarUrl: users.avatarUrl,
+      claimerId: transactions.claimerId,
     })
     .from(reviews)
     .innerJoin(users, eq(users.id, reviews.reviewerId))
+    .innerJoin(transactions, eq(transactions.id, reviews.transactionId))
     .where(eq(reviews.revieweeId, id))
     .orderBy(desc(reviews.createdAt))
     .limit(50);
@@ -89,6 +93,10 @@ reviewsRouter.get('/users/:id/reviews', async (req, res) => {
     user,
     average: summary?.average ? Number(summary.average) : null,
     total: summary?.total ?? 0,
-    reviews: items,
+    // The reviewer's side of the deal: the claimer is the buyer, the other party the seller.
+    reviews: items.map(({ claimerId, ...r }) => ({
+      ...r,
+      reviewerRole: r.reviewerId === claimerId ? ('BUYER' as const) : ('SELLER' as const),
+    })),
   });
 });

@@ -1,4 +1,10 @@
+'use client';
+
+import Link from 'next/link';
+import { useState, type FormEvent } from 'react';
 import { Avatar } from '@/components/avatar';
+import { Badge, Button, Input } from '@/components/ui';
+import { useAuth } from '@/features/auth';
 import { formatDateTime } from '@/lib/format';
 import type { Review, ReviewSummary } from '@/lib/types';
 
@@ -78,26 +84,43 @@ export function RatingSummary({ average, total }: Pick<ReviewSummary, 'average' 
   );
 }
 
-/** One review: reviewer avatar + name (Langar), stars on the right, quoted comment. */
+const roleLabel = (role: Review['reviewerRole']) => (role === 'BUYER' ? 'Buyer' : 'Seller');
+
+/** One review: reviewer avatar + name (Langar) with their role, stars on the right, comment. */
 export function ReviewCard({ review: r }: { review: Review }) {
   return (
-    <article className="rounded-[20px] bg-white px-6 py-5 shadow-card sm:px-9">
-      <header className="flex flex-wrap items-center gap-3 sm:gap-8">
-        <Avatar name={r.reviewerName} size={42} />
-        <h3 className="font-display text-xl text-black">{r.reviewerName}</h3>
+    <article className="rounded-[20px] bg-white px-6 py-5 shadow-card sm:px-8">
+      <header className="flex flex-wrap items-center gap-3 sm:gap-4">
+        <Link href={`/users/${r.reviewerId}`} className="flex items-center gap-3 hover:underline">
+          <Avatar url={r.reviewerAvatarUrl} name={r.reviewerName} size={40} />
+          <h3 className="font-display text-base text-black">{r.reviewerName}</h3>
+        </Link>
+        <Badge tone={r.reviewerRole === 'BUYER' ? 'brand' : 'neutral'}>
+          {roleLabel(r.reviewerRole)}
+        </Badge>
         <span className="ml-auto">
-          <Stars value={r.rating} size={34} />
+          <Stars value={r.rating} size={32} />
         </span>
       </header>
       {r.comment && <p className="mt-3 text-base text-black/65">“{r.comment}”</p>}
-      <p className="mt-3 text-xs text-muted">{formatDateTime(r.createdAt)}</p>
+      <p className="mt-2 text-xs text-muted">{formatDateTime(r.createdAt)}</p>
     </article>
   );
 }
 
+type Filter = 'ALL' | Review['reviewerRole'];
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'BUYER', label: 'From buyers' },
+  { value: 'SELLER', label: 'From sellers' },
+];
+
 /** Full rating tab: breakdown + summary side by side, then the review list. */
 export function RatingPanel({ summary }: { summary: ReviewSummary }) {
   const { average, total, reviews } = summary;
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const shown = filter === 'ALL' ? reviews : reviews.filter((r) => r.reviewerRole === filter);
+
   return (
     <div className="space-y-6">
       <div className="grid items-center gap-6 lg:grid-cols-[1fr_480px]">
@@ -107,17 +130,114 @@ export function RatingPanel({ summary }: { summary: ReviewSummary }) {
       {total > reviews.length && (
         <p className="text-xs text-muted">Bars show the {reviews.length} most recent ratings.</p>
       )}
-      {reviews.length === 0 ? (
+      {reviews.length > 0 && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter reviews">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              aria-pressed={filter === f.value}
+              onClick={() => setFilter(f.value)}
+              className={`rounded-full px-4 py-1 text-sm shadow-button transition ${
+                filter === f.value
+                  ? 'bg-brand-500 text-white'
+                  : 'bg-white text-ink hover:bg-brand-50'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {shown.length === 0 ? (
         <p className="rounded-[20px] bg-white p-6 text-center text-muted shadow-card">
-          No reviews yet. Reviews appear here after completed trades.
+          {reviews.length === 0
+            ? 'No reviews yet. Reviews appear here after completed trades.'
+            : 'No reviews in this group yet.'}
         </p>
       ) : (
         <div className="space-y-4">
-          {reviews.map((r) => (
+          {shown.map((r) => (
             <ReviewCard key={r.id} review={r} />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Rate the other side of a completed trade. Both buyer and seller get one review each;
+ * `role` is *your* side, so a buyer rates "the seller" and vice versa.
+ */
+export function ReviewForm({
+  transactionId,
+  role,
+  counterpartName,
+  onDone,
+}: {
+  transactionId: string;
+  role: 'BUYER' | 'SELLER';
+  counterpartName: string;
+  onDone: () => void;
+}) {
+  const { call } = useAuth();
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const other = role === 'BUYER' ? 'seller' : 'buyer';
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!rating) return setError('Pick a star rating first.');
+    setBusy(true);
+    setError(undefined);
+    try {
+      await call(`/transactions/${transactionId}/reviews`, {
+        body: { rating, comment: comment.trim() || undefined },
+      });
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-2 rounded-[14px] bg-white p-4 shadow-card">
+      <p className="text-sm font-medium text-ink">
+        Rate the {other}, {counterpartName}
+      </p>
+      <div className="flex items-center gap-1" role="radiogroup" aria-label={`Rate the ${other}`}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            role="radio"
+            aria-checked={rating === n}
+            aria-label={`${n} star${n === 1 ? '' : 's'}`}
+            onClick={() => setRating(n)}
+            className={`transition hover:scale-110 ${n <= rating ? '' : 'opacity-25 grayscale'}`}
+          >
+            <img src="/icons/star.svg" alt="" width={32} height={32} />
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Input
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Comment (optional)"
+          maxLength={1000}
+          className="min-w-0 flex-1"
+        />
+        <Button type="submit" variant="brand" disabled={busy}>
+          {busy ? 'Sending…' : 'Send review'}
+        </Button>
+      </div>
+      {error && <p className="text-xs text-danger">{error}</p>}
+    </form>
   );
 }

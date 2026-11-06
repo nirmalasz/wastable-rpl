@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { extractListingDraft } from '../../ai/agents/listing-agent.js';
@@ -168,6 +168,41 @@ listingsRouter.get('/listings/mine', requireAuth, async (_req, res) => {
       ...toPublicListing(r),
       pendingClaim: byListing.get(r.id) ?? null,
     })),
+  });
+});
+
+/** Public seller profile: who they are plus their live listings (nothing hidden or finished). */
+listingsRouter.get('/users/:id/listings', async (req, res) => {
+  const { id } = uuidParam.parse(req.params);
+  const db = getDb();
+  const [user] = await db
+    .select({ id: users.id, name: users.name, avatarUrl: users.avatarUrl })
+    .from(users)
+    .where(eq(users.id, id));
+  if (!user) throw HttpError.notFound('User not found');
+
+  const rows = await db
+    .select()
+    .from(listings)
+    .where(
+      and(
+        eq(listings.sellerId, id),
+        inArray(listings.status, ['AVAILABLE', 'PENDING']),
+        gt(listings.expiryDate, new Date()),
+      ),
+    )
+    .orderBy(desc(listings.createdAt));
+  const rating = (await sellerRatings(db, [id])).get(id);
+
+  res.json({
+    user,
+    listings: rows.map((r) =>
+      toPublicListing(r, {
+        sellerName: user.name,
+        sellerAvatarUrl: user.avatarUrl,
+        sellerRating: rating?.rating ?? null,
+      }),
+    ),
   });
 });
 
