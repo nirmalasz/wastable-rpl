@@ -451,6 +451,12 @@ paths:
                     properties:
                       id: { type: string, format: uuid }
                       status: { $ref: '#/components/schemas/TransactionStatus' }
+                  pickupLocation:
+                    type: [object, 'null']
+                    description: Exact pickup coordinates, only returned to the seller.
+                    properties:
+                      lat: { type: number }
+                      lng: { type: number }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
@@ -1235,7 +1241,9 @@ components:
           minimum: 0
           maximum: 100000000
           default: 0
-          description: Must be > 0 when `listingType` is `SELL`; stored as 0 otherwise.
+          description: >-
+            Used when `listingType` is `SELL`; stored as 0 otherwise. A `SELL` listing with price 0
+            is saved as `FREE`.
         expiryDate: { type: string, format: date-time, description: Must be in the future. }
         pickupArea: { type: string, minLength: 1, maxLength: 200 }
         pickupLat: { type: [number, 'null'], minimum: -90, maximum: 90 }
