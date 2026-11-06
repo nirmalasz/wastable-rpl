@@ -40,6 +40,13 @@ const envSchema = z
      */
     EMAIL_VERIFICATION: z.enum(['on', 'off']).default('off'),
 
+    /** Pin -> address lookup. "nominatim" (OpenStreetMap, free) or "off". */
+    GEOCODER: z.enum(['nominatim', 'off']).default('nominatim'),
+    /** Nominatim's policy requires a User-Agent that identifies the app. */
+    GEOCODER_USER_AGENT: z
+      .string()
+      .default('WASTABLE/0.1 (student project; https://github.com/nirmalasz/wastable-rpl)'),
+
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.coerce.number().int().positive().default(587),
     SMTP_USER: z.string().optional(),

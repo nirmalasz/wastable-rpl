@@ -1,36 +1,79 @@
 'use client';
 
-import { useCallback } from 'react';
-import { createLocalStore } from '@/lib/local-store';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/features/auth';
+import type { ChatMessage } from '@/lib/types';
+
+/** How often an open thread asks the API for new messages. */
+const POLL_MS = 5000;
 
 /**
- * Trade chat, one thread per transaction. The API has no messaging endpoint yet, so
- * threads are kept in this browser only; swap `store` for API calls once one exists.
+ * One trade's chat thread, backed by /transactions/:id/messages. Loads the history, then
+ * polls with ?after= for new messages while mounted. Sending appends the saved message.
+ * Mount it once per thread (key the component by transaction id) so state starts fresh.
  */
-export interface ChatMessage {
-  id: string;
-  text: string;
-  sentAt: string;
-  mine: boolean;
-}
+export function useChatThread(transactionId: string, onActivity?: () => void) {
+  const { call } = useAuth();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string>();
+  const latest = useRef<string | undefined>(undefined);
+  const activity = useRef(onActivity);
+  useEffect(() => {
+    activity.current = onActivity;
+  });
 
-const store = createLocalStore<Record<string, ChatMessage[]>>('wastable.chat', {});
-
-export function useChatThreads() {
-  const threads = store.useValue();
-
-  const send = useCallback((threadId: string, text: string) => {
-    const all = store.get();
-    const message: ChatMessage = {
-      id: crypto.randomUUID(),
-      text,
-      sentAt: new Date().toISOString(),
-      mine: true,
-    };
-    store.set({ ...all, [threadId]: [...(all[threadId] ?? []), message] });
+  const merge = useCallback((incoming: ChatMessage[]) => {
+    if (incoming.length === 0) return;
+    setMessages((prev) => {
+      const seen = new Set(prev.map((m) => m.id));
+      const next = [...prev, ...incoming.filter((m) => !seen.has(m.id))];
+      latest.current = next.at(-1)?.createdAt;
+      return next;
+    });
+    activity.current?.();
   }, []);
 
-  return { threads, send };
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      const after = latest.current ? `?after=${encodeURIComponent(latest.current)}` : '';
+      try {
+        const res = await call<{ messages: ChatMessage[] }>(
+          `/transactions/${transactionId}/messages${after}`,
+        );
+        if (cancelled) return;
+        merge(res.messages);
+        setLoaded(true);
+        setError(undefined);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      }
+    }
+
+    poll();
+    const timer = setInterval(() => {
+      // Skip polling while the tab is hidden; catch up when it is visible again.
+      if (document.visibilityState === 'visible') poll();
+    }, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [transactionId, call, merge]);
+
+  const send = useCallback(
+    async (text: string) => {
+      const res = await call<{ message: ChatMessage }>(`/transactions/${transactionId}/messages`, {
+        body: { text },
+      });
+      merge([res.message]);
+    },
+    [call, transactionId, merge],
+  );
+
+  return { messages, loaded, error, send };
 }
 
 /** "12.00" — Indonesian clock format used in the Figma chat. */

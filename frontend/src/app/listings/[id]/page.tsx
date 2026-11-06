@@ -255,7 +255,9 @@ export default function ListingPage() {
               {pickupLocation ? (
                 <>
                   <span className="text-muted">Your saved pin (only you can see this): </span>
-                  {pickupLocation.lat.toFixed(5)}, {pickupLocation.lng.toFixed(5)} ·{' '}
+                  {pickupLocation.address ??
+                    `${pickupLocation.lat.toFixed(5)}, ${pickupLocation.lng.toFixed(5)}`}{' '}
+                  ·{' '}
                   <a
                     href={`https://www.openstreetmap.org/?mlat=${pickupLocation.lat}&mlon=${pickupLocation.lng}#map=17/${pickupLocation.lat}/${pickupLocation.lng}`}
                     target="_blank"

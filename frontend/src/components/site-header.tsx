@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '@/features/auth';
 import { useCart } from '@/features/cart';
+import type { Transaction } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
 import { Avatar } from './avatar';
 
@@ -22,6 +23,21 @@ function useUnread() {
   }, [token, reloadNotes]);
 
   return notes.data?.unreadCount ?? 0;
+}
+
+/** Unread chat messages across all trades, refreshed every 30 seconds. */
+function useChatUnread() {
+  const { token } = useAuth();
+  const trx = useApi<{ transactions: Transaction[] }>(token ? '/transactions/mine' : null, token);
+  const reload = trx.reload;
+
+  useEffect(() => {
+    if (!token) return;
+    const timer = setInterval(reload, 30_000);
+    return () => clearInterval(timer);
+  }, [token, reload]);
+
+  return trx.data?.transactions.reduce((n, t) => n + t.unreadCount, 0) ?? 0;
 }
 
 function UnreadDot({ count }: { count: number }) {
@@ -48,6 +64,7 @@ export function SiteSidebar() {
   const { user, token, logout } = useAuth();
   const pathname = usePathname();
   const signedIn = Boolean(token);
+  const chatUnread = useChatUnread();
 
   const item = (href: string) =>
     `relative flex h-12 w-12 items-center justify-center rounded-xl transition hover:bg-brand-50 ${
@@ -70,6 +87,7 @@ export function SiteSidebar() {
           </Link>
           <Link href="/chat" className={item('/chat')} title="Chat">
             <img src="/icons/nav-chat.svg" alt="Chat" width={32} height={32} />
+            <UnreadDot count={chatUnread} />
           </Link>
           <Link href="/cart" className={item('/cart')} title="Cart">
             <img src="/icons/nav-cart.svg" alt="Cart" width={39} height={33} />

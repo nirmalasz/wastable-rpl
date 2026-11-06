@@ -1,9 +1,17 @@
-import { and, asc, count, desc, eq, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getDb } from '../../db/client.js';
-import { listings, reviews, transactions, users, waitlistEntries } from '../../db/schema.js';
+import {
+  cartItems,
+  listings,
+  messages,
+  reviews,
+  transactions,
+  users,
+  waitlistEntries,
+} from '../../db/schema.js';
 import { MAX_OPEN_CLAIMS } from '../../lib/constants.js';
 import { HttpError } from '../../lib/http-error.js';
 import { currentUser, requireAuth, requireVerified } from '../../middleware/auth.js';
@@ -46,6 +54,10 @@ transactionsRouter.post('/listings/:id/claim', requireAuth, requireVerified, asy
       .insert(transactions)
       .values({ listingId: id, claimerId: user.id })
       .returning();
+    // Claimed, so it no longer needs to wait in the claimer's cart.
+    await tx
+      .delete(cartItems)
+      .where(and(eq(cartItems.userId, user.id), eq(cartItems.listingId, id)));
     await tx
       .update(listings)
       .set({ status: 'PENDING', updatedAt: new Date() })
@@ -139,6 +151,36 @@ transactionsRouter.get('/transactions/mine', requireAuth, async (_req, res) => {
     .where(or(eq(transactions.claimerId, me.id), eq(listings.sellerId, me.id)))
     .orderBy(desc(transactions.createdAt));
 
+  // Chat summary per thread: latest message and how many of theirs I have not read.
+  const ids = rows.map((r) => r.id);
+  const latest = ids.length
+    ? await getDb()
+        .selectDistinctOn([messages.transactionId], {
+          transactionId: messages.transactionId,
+          body: messages.body,
+          createdAt: messages.createdAt,
+          senderId: messages.senderId,
+        })
+        .from(messages)
+        .where(inArray(messages.transactionId, ids))
+        .orderBy(messages.transactionId, desc(messages.createdAt))
+    : [];
+  const unread = ids.length
+    ? await getDb()
+        .select({ transactionId: messages.transactionId, n: count() })
+        .from(messages)
+        .where(
+          and(
+            inArray(messages.transactionId, ids),
+            ne(messages.senderId, me.id),
+            isNull(messages.readAt),
+          ),
+        )
+        .groupBy(messages.transactionId)
+    : [];
+  const lastBy = new Map(latest.map((m) => [m.transactionId, m]));
+  const unreadBy = new Map(unread.map((u) => [u.transactionId, u.n]));
+
   res.json({
     transactions: rows.map(
       ({
@@ -152,11 +194,16 @@ transactionsRouter.get('/transactions/mine', requireAuth, async (_req, res) => {
         ...r
       }) => {
         const isBuyer = claimerId === me.id;
+        const last = lastBy.get(r.id);
         return {
           ...r,
           price: Number(r.price),
           role: isBuyer ? ('BUYER' as const) : ('SELLER' as const),
           reviewedByMe: myReviewId !== null,
+          unreadCount: unreadBy.get(r.id) ?? 0,
+          lastMessage: last
+            ? { body: last.body, createdAt: last.createdAt, mine: last.senderId === me.id }
+            : null,
           // Contact details are only shared between the two people in an open or finished deal.
           counterpart: {
             id: isBuyer ? r.sellerId : claimerId,

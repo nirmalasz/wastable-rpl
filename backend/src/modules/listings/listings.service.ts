@@ -4,7 +4,7 @@ import { listings, reviews, users } from '../../db/schema.js';
 
 type ListingRow = typeof listings.$inferSelect;
 
-/** Public shape of a listing. Exact coordinates are never returned (privacy NFR). */
+/** Public shape of a listing. Exact coordinates and address are never returned (privacy NFR). */
 export function toPublicListing(
   row: ListingRow,
   extra: {
@@ -17,9 +17,10 @@ export function toPublicListing(
   const rest: Partial<ListingRow> = { ...row };
   delete rest.pickupLat;
   delete rest.pickupLng;
+  delete rest.pickupAddress;
   return { ...rest, price: Number(row.price), ...extra } as Omit<
     ListingRow,
-    'pickupLat' | 'pickupLng' | 'price'
+    'pickupLat' | 'pickupLng' | 'pickupAddress' | 'price'
   > & {
     price: number;
     sellerName?: string;

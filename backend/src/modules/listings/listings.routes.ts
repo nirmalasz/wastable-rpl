@@ -17,6 +17,7 @@ import {
 import { CATEGORIES, URGENT_WINDOW_HOURS } from '../../lib/constants.js';
 import { HttpError } from '../../lib/http-error.js';
 import { sendMail } from '../../lib/mailer.js';
+import { reverseGeocode } from '../../lib/geocode.js';
 import { uploadUrlSchema } from '../../lib/storage.js';
 import {
   currentUser,
@@ -102,6 +103,10 @@ listingsRouter.post('/listings', ...writer, async (req, res) => {
   const underReview = moderation.verdict === 'UNCERTAIN';
 
   const offer = normalizeOffer(body.listingType, body.price);
+  const geo =
+    body.pickupLat != null && body.pickupLng != null
+      ? await reverseGeocode(body.pickupLat, body.pickupLng)
+      : null;
   const values = {
     sellerId: user.id,
     title: body.title,
@@ -114,6 +119,7 @@ listingsRouter.post('/listings', ...writer, async (req, res) => {
     pickupArea: body.pickupArea,
     pickupLat: body.pickupLat == null ? null : String(body.pickupLat),
     pickupLng: body.pickupLng == null ? null : String(body.pickupLng),
+    pickupAddress: geo?.address ?? null,
     photoUrl: body.photoUrl ?? null,
     dietFlags: moderation.dietFlags,
     isUrgent: !underReview && isUrgent(body.expiryDate, now),
@@ -143,6 +149,14 @@ listingsRouter.post('/listings', ...writer, async (req, res) => {
     return;
   }
   res.status(201).json({ listing: toPublicListing(listing) });
+});
+
+/** Preview the address for a pin before saving (seller's form). Throttled like Nominatim. */
+listingsRouter.get('/geocode/reverse', requireAuth, userWriteLimiter, async (req, res) => {
+  const { lat, lng } = z
+    .object({ lat: z.coerce.number().min(-90).max(90), lng: z.coerce.number().min(-180).max(180) })
+    .parse(req.query);
+  res.json({ result: await reverseGeocode(lat, lng) });
 });
 
 listingsRouter.get('/listings/mine', requireAuth, async (_req, res) => {
@@ -264,7 +278,7 @@ listingsRouter.get('/listings/:id', optionalAuth, async (req, res) => {
     // Exact coordinates stay private (NFR); only the seller gets them back, to check the pin.
     pickupLocation:
       isOwner && row.pickupLat !== null && row.pickupLng !== null
-        ? { lat: Number(row.pickupLat), lng: Number(row.pickupLng) }
+        ? { lat: Number(row.pickupLat), lng: Number(row.pickupLng), address: row.pickupAddress }
         : null,
     waitlistCount,
     myWaitlistPosition,
@@ -308,6 +322,14 @@ listingsRouter.patch('/listings/:id', ...writer, async (req, res) => {
   }
   const expiryDate = body.expiryDate ?? existing.expiryDate;
 
+  // Look the address up again only when the pin moves; clearing the pin clears it.
+  const pinChanged = body.pickupLat !== undefined || body.pickupLng !== undefined;
+  const pickupAddress = !pinChanged
+    ? undefined
+    : body.pickupLat != null && body.pickupLng != null
+      ? ((await reverseGeocode(body.pickupLat, body.pickupLng))?.address ?? null)
+      : null;
+
   const updated = await getDb().transaction(async (tx) => {
     const [row] = await tx
       .update(listings)
@@ -326,6 +348,7 @@ listingsRouter.patch('/listings/:id', ...writer, async (req, res) => {
         ...(body.pickupLng !== undefined && {
           pickupLng: body.pickupLng === null ? null : String(body.pickupLng),
         }),
+        ...(pickupAddress !== undefined && { pickupAddress }),
         ...(body.photoUrl !== undefined && { photoUrl: body.photoUrl }),
         dietFlags,
         isUrgent: isUrgent(expiryDate),

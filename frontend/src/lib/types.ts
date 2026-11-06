@@ -67,7 +67,7 @@ export interface ListingDetail {
   myWaitlistPosition: number | null;
   myTransaction: { id: string; status: string } | null;
   /** Exact pickup pin; only sent to the seller. */
-  pickupLocation: LatLng | null;
+  pickupLocation: (LatLng & { address: string | null }) | null;
 }
 
 export interface LatLng {
@@ -87,6 +87,9 @@ export interface Transaction {
   claimerName: string;
   role: 'BUYER' | 'SELLER';
   reviewedByMe: boolean;
+  /** Chat summary for this trade's thread. */
+  unreadCount: number;
+  lastMessage: { body: string; createdAt: string; mine: boolean } | null;
   counterpart: { id: string; name: string; avatarUrl: string | null; contact: string | null };
 }
 
@@ -172,4 +175,25 @@ export interface ReviewSummary {
   average: number | null;
   total: number;
   reviews: Review[];
+}
+
+export interface ChatMessage {
+  id: string;
+  body: string;
+  createdAt: string;
+  readAt: string | null;
+  mine: boolean;
+}
+
+export interface CartEntry {
+  addedAt: string;
+  /** False once the item is reserved, expired or otherwise not claimable. */
+  available: boolean;
+  listing: Listing;
+}
+
+/** Result of GET /geocode/reverse. */
+export interface GeocodedAddress {
+  address: string;
+  area: string | null;
 }

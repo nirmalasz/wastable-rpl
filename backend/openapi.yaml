@@ -26,6 +26,8 @@ tags:
   - name: Listings
   - name: Search
   - name: Transactions
+  - name: Chat
+  - name: Cart
   - name: Reviews
   - name: Notifications
   - name: Moderation
@@ -457,6 +459,9 @@ paths:
                     properties:
                       lat: { type: number }
                       lng: { type: number }
+                      address:
+                        type: [string, 'null']
+                        description: Street address looked up from the pin (OpenStreetMap).
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
@@ -743,6 +748,15 @@ paths:
                         claimerName: { type: string }
                         role: { type: string, enum: [BUYER, SELLER] }
                         reviewedByMe: { type: boolean }
+                        unreadCount:
+                          type: integer
+                          description: Chat messages from the other party I have not read.
+                        lastMessage:
+                          type: [object, 'null']
+                          properties:
+                            body: { type: string }
+                            createdAt: { type: string, format: date-time }
+                            mine: { type: boolean }
                         counterpart:
                           type: object
                           properties:
@@ -833,6 +847,161 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Chat
+  /transactions/{id}/messages:
+    get:
+      tags: [Chat]
+      summary: Messages in a trade's chat, oldest first
+      description: |
+        Buyer and seller only (others get 404). Marks the other party's messages as read.
+        Pass `after` (the last `createdAt` you have) to poll for new messages only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: after
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Messages (at most 500)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChatMessage' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Chat]
+      summary: Send a chat message
+      description: |
+        The other party gets one NEW_MESSAGE notification per unread burst. Closed (409) once the
+        trade is cancelled. Rate limited per account.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 1000 }
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: '#/components/schemas/ChatMessage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  # ---------------------------------------------------------------- Cart
+  /cart:
+    get:
+      tags: [Cart]
+      summary: Listings saved to claim later, newest first
+      description: Hidden or removed listings are left out. Claiming a listing removes it.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Cart items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        addedAt: { type: string, format: date-time }
+                        available:
+                          type: boolean
+                          description: False once reserved, expired or otherwise not claimable.
+                        listing: { $ref: '#/components/schemas/Listing' }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Cart]
+      summary: Add a listing to the cart (idempotent)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listingId]
+              properties:
+                listingId: { type: string, format: uuid }
+      responses:
+        '201': { description: Added (or already there) }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /cart/{listingId}:
+    delete:
+      tags: [Cart]
+      summary: Remove a listing from the cart
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /geocode/reverse:
+    get:
+      tags: [Listings]
+      summary: Look up the street address for a pin (seller's listing form)
+      description: |
+        OpenStreetMap Nominatim, cached and limited to 1 request/second server-wide.
+        `result` is null when the lookup is switched off or fails.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Address, if found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: [object, 'null']
+                    properties:
+                      address: { type: string }
+                      area:
+                        type: [string, 'null']
+                        description: Neighbourhood and city, safe to use as the public pickup area.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Error' }
 
   # ---------------------------------------------------------------- Notifications
   /notifications:
@@ -1270,6 +1439,14 @@ components:
           oneOf:
             - $ref: '#/components/schemas/UploadUrl'
             - type: 'null'
+    ChatMessage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: [string, 'null'], format: date-time }
+        mine: { type: boolean }
     Listing:
       type: object
       description: Public listing. Exact pickup coordinates are never exposed.
