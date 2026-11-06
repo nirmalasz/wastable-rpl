@@ -1,12 +1,47 @@
 @import 'tailwindcss';
 
+/* Brand tokens from the WASTABLE Figma "Branding Details" sheet and the Prototype screens. */
 @theme {
-  --color-brand-50: #e0f2f1;
-  --color-brand-500: #00897b;
-  --color-brand-700: #00695c;
-  --color-urgent: #fb8c00;
+  --font-sans: var(--font-be-vietnam), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-langar), var(--font-be-vietnam), serif;
+
+  /* Primary / secondary greens */
+  --color-brand-50: #d5e8ab;
+  --color-brand-300: #bae067;
+  --color-brand-500: #8bb138;
+  --color-brand-700: #3b5a14;
+
+  /* Accents */
+  --color-accent: #fecf18;
+  --color-urgent: #f58836;
+  --color-danger: #a72525;
+  --color-expiry: #e58686;
+
+  /* Neutrals */
+  --color-ink: #443b34;
+  --color-cream: #f3efe4;
+  --color-surface: #fbfaf7;
+  --color-sand: #e0daca;
+  --color-muted: #4e5969;
+
+  --shadow-card: 0 4px 4px 0 rgb(0 0 0 / 0.25);
+  --shadow-button: 0 3px 3px 0 rgb(0 0 0 / 0.25);
 }
 
-body {
-  @apply bg-white text-slate-900 antialiased;
+@layer base {
+  body {
+    @apply bg-cream font-sans text-ink antialiased;
+  }
+
+  h1,
+  h2 {
+    @apply font-display font-normal text-ink;
+  }
+}
+
+@layer components {
+  /* Green "claim" button from the listing screen (inset shadow, Langar label). */
+  .claim-button {
+    @apply flex h-[79px] w-full items-center justify-center rounded-[20px] bg-brand-500 font-display text-4xl text-white shadow-[inset_0_4px_4px_0_rgb(0_0_0/0.25)] transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60;
+  }
 }

@@ -62,7 +62,7 @@ function ResetForm() {
       {!tokenParam && (
         <Card>
           <form onSubmit={requestLink} className="space-y-3">
-            <h1 className="text-xl font-bold">Reset password</h1>
+            <h1 className="text-3xl">Reset password</h1>
             <Field label="Account email">
               <Input name="email" type="email" required />
             </Field>
@@ -73,7 +73,7 @@ function ResetForm() {
       {token && (
         <Card>
           <form onSubmit={confirm} className="space-y-3">
-            <h2 className="font-bold">Choose a new password</h2>
+            <h2 className="text-xl">Choose a new password</h2>
             <Field label="New password" hint="At least 8 characters.">
               <Input name="password" type="password" required minLength={8} />
             </Field>

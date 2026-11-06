@@ -124,35 +124,42 @@ function NewListingForm() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <h1 className="text-2xl font-bold">Post surplus food</h1>
+    <form onSubmit={submit} className="space-y-6">
+      <h1 className="sr-only">Post surplus food</h1>
+      <div className="grid gap-6 lg:grid-cols-[434px_1fr]">
+        {/* Left column: photo and the AI helper */}
+        <div className="space-y-5">
+          <Card>
+            <ImageUpload
+              label="Photo (optional)"
+              value={form.photoUrl || null}
+              onChange={(url) => set('photoUrl', url ?? '')}
+            />
+          </Card>
+          <Card className="space-y-3">
+            <Field
+              label="Describe it in your own words (optional)"
+              hint="Example: 5 nasi kotak ayam sisa katering, Rp 8.000, habis malam ini. The AI fills in the form."
+            >
+              <Textarea rows={3} value={freeText} onChange={(e) => setFreeText(e.target.value)} />
+            </Field>
+            <Button
+              type="button"
+              variant="brand"
+              onClick={extract}
+              disabled={extracting || (!freeText && !form.photoUrl)}
+              className="w-full"
+            >
+              {extracting ? 'Reading…' : 'Fill the form with AI'}
+            </Button>
+            {info && <Alert kind="info">{info}</Alert>}
+          </Card>
+        </div>
 
-      <Card className="space-y-3">
-        <Field
-          label="Describe it in your own words (optional)"
-          hint="Example: 5 nasi kotak ayam sisa katering, Rp 8.000, habis malam ini. The AI fills in the form."
-        >
-          <Textarea rows={3} value={freeText} onChange={(e) => setFreeText(e.target.value)} />
-        </Field>
-        <ImageUpload
-          label="Photo (optional)"
-          value={form.photoUrl || null}
-          onChange={(url) => set('photoUrl', url ?? '')}
-        />
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={extract}
-          disabled={extracting || (!freeText && !form.photoUrl)}
-        >
-          {extracting ? 'Reading…' : 'Fill the form with AI'}
-        </Button>
-        {info && <Alert kind="info">{info}</Alert>}
-      </Card>
-
-      <Card>
-        <form onSubmit={submit} className="space-y-3">
-          <Field label="Title">
+        {/* Right column: Product Description */}
+        <Card className="space-y-4 sm:p-8">
+          <h2 className="text-3xl text-black">Product Description</h2>
+          <Field label="Product Name">
             <Input
               value={form.title}
               onChange={(e) => set('title', e.target.value)}
@@ -160,33 +167,7 @@ function NewListingForm() {
               maxLength={120}
             />
           </Field>
-          <Field label="Description">
-            <Textarea
-              rows={3}
-              value={form.description}
-              onChange={(e) => set('description', e.target.value)}
-              maxLength={2000}
-            />
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Category">
-              <Select value={form.category} onChange={(e) => set('category', e.target.value)}>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {humanize(c)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Quantity">
-              <Input
-                type="number"
-                min={1}
-                value={form.quantity}
-                onChange={(e) => set('quantity', e.target.value)}
-                required
-              />
-            </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Offer type">
               <Select
                 value={form.listingType}
@@ -208,13 +189,31 @@ function NewListingForm() {
                 />
               </Field>
             )}
-            <Field label="Best before / expires">
+            <Field label="Quantity">
+              <Input
+                type="number"
+                min={1}
+                value={form.quantity}
+                onChange={(e) => set('quantity', e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Best before / expiration date">
               <Input
                 type="datetime-local"
                 value={form.expiry}
                 onChange={(e) => set('expiry', e.target.value)}
                 required
               />
+            </Field>
+            <Field label="Category">
+              <Select value={form.category} onChange={(e) => set('category', e.target.value)}>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {humanize(c)}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Pickup area" hint="Shown publicly. Do not enter your exact address.">
               <Input
@@ -224,34 +223,48 @@ function NewListingForm() {
                 maxLength={200}
               />
             </Field>
-            <div className="space-y-1 text-sm sm:col-span-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() =>
-                  navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                      set('pickupLat', pos.coords.latitude);
-                      set('pickupLng', pos.coords.longitude);
-                    },
-                    () => setError('Could not get your location. You can still post without it.'),
-                  )
-                }
-              >
-                {form.pickupLat === null ? 'Use my location for distance search' : 'Location saved'}
-              </Button>
-              <p className="text-xs text-slate-500">
-                Lets nearby buyers find this by distance. Exact coordinates are never shown.
-              </p>
-            </div>
+          </div>
+          <Field label="Description">
+            <Textarea
+              rows={4}
+              value={form.description}
+              onChange={(e) => set('description', e.target.value)}
+              maxLength={2000}
+            />
+          </Field>
+          <div className="space-y-1 text-sm">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    set('pickupLat', pos.coords.latitude);
+                    set('pickupLng', pos.coords.longitude);
+                  },
+                  () => setError('Could not get your location. You can still post without it.'),
+                )
+              }
+            >
+              {form.pickupLat === null ? 'Use my location for distance search' : 'Location saved'}
+            </Button>
+            <p className="text-xs text-muted">
+              Lets nearby buyers find this by distance. Exact coordinates are never shown.
+            </p>
           </div>
           {error && <Alert>{error}</Alert>}
-          <Button type="submit" disabled={busy}>
-            {busy ? 'Posting…' : 'Post listing'}
-          </Button>
-        </form>
-      </Card>
-    </div>
+        </Card>
+      </div>
+      <div className="flex justify-end">
+        <Button
+          type="submit"
+          disabled={busy}
+          className="w-full px-16 py-3 text-lg uppercase sm:w-auto"
+        >
+          {busy ? 'Posting…' : 'Post'}
+        </Button>
+      </div>
+    </form>
   );
 }
 

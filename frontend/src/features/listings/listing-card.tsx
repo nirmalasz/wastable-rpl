@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import { Badge, Card } from '@/components/ui';
-import { humanize, rupiah, timeLeft } from '@/lib/format';
+import { Badge } from '@/components/ui';
+import { rupiah, timeLeft } from '@/lib/format';
 import type { Listing } from '@/lib/types';
 
 export function priceLabel(l: Pick<Listing, 'listingType' | 'price'>) {
@@ -9,42 +9,52 @@ export function priceLabel(l: Pick<Listing, 'listingType' | 'price'>) {
   return rupiah(l.price);
 }
 
+/** Listing tile from the Figma "Recommended Listing" grid. */
 export function ListingCard({ listing: l }: { listing: Listing }) {
   return (
-    <Link href={`/listings/${l.id}`} className="block">
-      <Card className="h-full space-y-2 overflow-hidden transition hover:border-brand-500">
-        {l.photoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={l.photoUrl}
-            alt=""
-            loading="lazy"
-            className="-mx-4 -mt-4 mb-2 aspect-video w-[calc(100%+2rem)] max-w-none object-cover"
-          />
+    <Link
+      href={`/listings/${l.id}`}
+      className="group flex h-full flex-col rounded-[20px] bg-white p-3 shadow-card transition hover:-translate-y-0.5"
+    >
+      <div className="relative aspect-square overflow-hidden rounded-[14px] bg-cream">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={l.photoUrl ?? '/images/listing-placeholder.jpg'}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+        />
+        {l.isUrgent && (
+          <span className="absolute top-2 left-2">
+            <Badge tone="urgent">Urgent</Badge>
+          </span>
         )}
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold">{l.title}</h3>
-          <Badge tone="brand">{priceLabel(l)}</Badge>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {l.isUrgent && <Badge tone="urgent">Urgent</Badge>}
-          <Badge>{humanize(l.category)}</Badge>
+      </div>
+
+      <p className="mt-2 text-2xl leading-tight font-bold italic text-black">{priceLabel(l)}</p>
+      <h3 className="line-clamp-2 text-base leading-snug font-medium text-black">{l.title}</h3>
+      <p className="text-xs font-light text-black">
+        {l.quantity} available · {l.pickupArea}
+        {l.distanceKm != null && ` · ${l.distanceKm} km`}
+      </p>
+      {l.dietFlags.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
           {l.dietFlags.map((f) => (
             <Badge key={f} tone="danger">
               contains {f}
             </Badge>
           ))}
         </div>
-        <p className="text-sm text-slate-600">
-          {l.quantity} available · {l.pickupArea}
-          {l.distanceKm != null && ` · ${l.distanceKm} km`}
-        </p>
-        <p className="text-xs text-slate-500">
+      )}
+
+      <div className="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-muted">
+        <span>
           {timeLeft(l.expiryDate)}
-          {l.sellerName && ` · ${l.sellerName}`}
-          {l.sellerRating != null && ` ★ ${l.sellerRating.toFixed(1)}`}
-        </p>
-      </Card>
+          {l.sellerRating != null && ` · ★ ${l.sellerRating.toFixed(1)}`}
+        </span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/icons/plus-circle.svg" alt="" width={32} height={32} />
+      </div>
     </Link>
   );
 }

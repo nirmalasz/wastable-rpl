@@ -77,7 +77,7 @@ function Profile({ user }: { user: User }) {
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
-      <h1 className="text-2xl font-bold">Your profile</h1>
+      <h1 className="text-4xl">Your profile</h1>
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 
       <Card className="space-y-3">
@@ -88,7 +88,7 @@ function Profile({ user }: { user: User }) {
           onChange={saveAvatar}
         />
         <form onSubmit={save} className="space-y-3">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {user.email} ·{' '}
             <Badge tone={user.status === 'ACTIVE' ? 'brand' : 'danger'}>
               {humanize(user.status)}
@@ -120,7 +120,7 @@ function Profile({ user }: { user: User }) {
               {home ? 'Update my location' : 'Set my location'}
             </Button>
             {home && (
-              <span className="text-slate-500">
+              <span className="text-muted">
                 {home.lat.toFixed(3)}, {home.lng.toFixed(3)}
               </span>
             )}
@@ -131,7 +131,7 @@ function Profile({ user }: { user: User }) {
 
       {user.status === 'SUSPENDED' && (
         <Card className="space-y-3">
-          <h2 className="font-bold">Appeal your suspension</h2>
+          <h2 className="text-xl">Appeal your suspension</h2>
           <form onSubmit={appeal} className="space-y-3">
             <Field label="Why should the suspension be lifted?">
               <Textarea name="reason" rows={3} required minLength={10} maxLength={1000} />
@@ -139,7 +139,7 @@ function Profile({ user }: { user: User }) {
             <Button type="submit">Submit appeal</Button>
           </form>
           {appeals.data?.appeals.map((a) => (
-            <p key={a.id} className="text-sm text-slate-600">
+            <p key={a.id} className="text-sm text-muted">
               {formatDateTime(a.createdAt)} · <Badge>{humanize(a.status)}</Badge>
             </p>
           ))}

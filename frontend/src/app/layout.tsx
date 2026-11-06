@@ -1,10 +1,20 @@
 import type { Metadata } from 'next';
+import { Be_Vietnam_Pro, Langar } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { AccountBanner } from '@/components/account-banner';
 import { FoodSafetyDisclaimer } from '@/components/food-safety-disclaimer';
-import { SiteHeader } from '@/components/site-header';
+import { SiteHeader, SiteSidebar } from '@/components/site-header';
 import { AuthProvider } from '@/features/auth';
 import './globals.css';
+
+// Brand typography: Langar for headings, Be Vietnam for body text.
+const langar = Langar({ weight: '400', subsets: ['latin'], variable: '--font-langar' });
+const beVietnam = Be_Vietnam_Pro({
+  weight: ['300', '400', '500', '600', '700'],
+  style: ['normal', 'italic'],
+  subsets: ['latin', 'vietnamese'],
+  variable: '--font-be-vietnam',
+});
 
 export const metadata: Metadata = {
   title: 'WASTABLE',
@@ -13,20 +23,25 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="flex min-h-screen flex-col">
+    <html lang="en" className={`${langar.variable} ${beVietnam.variable}`}>
+      <body className="min-h-screen">
         <AuthProvider>
-          <SiteHeader />
-          <main className="mx-auto w-full max-w-5xl flex-1 space-y-4 px-4 py-8">
-            <AccountBanner />
-            {children}
-          </main>
-        </AuthProvider>
-        <footer className="border-t border-slate-200">
-          <div className="mx-auto max-w-5xl px-4 py-4">
-            <FoodSafetyDisclaimer />
+          <div className="flex min-h-screen">
+            <SiteSidebar />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <SiteHeader />
+              <main className="mx-auto w-full max-w-[1320px] flex-1 space-y-4 px-4 pt-2 pb-8 md:px-8">
+                <AccountBanner />
+                {children}
+              </main>
+              <footer className="border-t border-sand">
+                <div className="mx-auto max-w-[1320px] px-4 py-4 md:px-8">
+                  <FoodSafetyDisclaimer />
+                </div>
+              </footer>
+            </div>
           </div>
-        </footer>
+        </AuthProvider>
       </body>
     </html>
   );

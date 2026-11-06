@@ -45,13 +45,13 @@ export function ImageUpload({ value, onChange, label = 'Photo', shape = 'wide' }
   }
 
   const frame =
-    shape === 'round' ? 'h-24 w-24 rounded-full' : 'aspect-video w-full max-w-sm rounded-lg';
+    shape === 'round' ? 'h-24 w-24 rounded-full' : 'aspect-square w-full rounded-[14px]';
 
   return (
     <div className="space-y-2">
       <span className="block text-sm font-medium">{label}</span>
       <div
-        className={`${frame} flex items-center justify-center overflow-hidden border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500`}
+        className={`${frame} flex items-center justify-center overflow-hidden border border-dashed border-sand bg-cream text-xs text-muted`}
       >
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -100,11 +100,9 @@ export function ImageUpload({ value, onChange, label = 'Photo', shape = 'wide' }
           </Button>
         )}
       </div>
-      <p className="text-xs text-slate-500">
-        JPG, PNG or WebP. Large photos are shrunk automatically.
-      </p>
+      <p className="text-xs text-muted">JPG, PNG or WebP. Large photos are shrunk automatically.</p>
       {error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}

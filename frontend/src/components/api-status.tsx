@@ -18,16 +18,14 @@ export function ApiStatus() {
   }, []);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+    <div className="rounded-[14px] border border-sand bg-surface p-4 text-sm">
       <span className="font-medium">API status: </span>
-      {state.kind === 'loading' && <span className="text-slate-500">checking…</span>}
+      {state.kind === 'loading' && <span className="text-muted">checking…</span>}
       {state.kind === 'ok' && (
         <span className="text-brand-700">connected ({state.data.status})</span>
       )}
       {state.kind === 'error' && (
-        <span className="text-red-600">
-          unreachable – is the backend running? ({state.message})
-        </span>
+        <span className="text-danger">unreachable – is the backend running? ({state.message})</span>
       )}
     </div>
   );
