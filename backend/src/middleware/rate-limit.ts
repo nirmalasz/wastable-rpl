@@ -16,3 +16,14 @@ export const userWriteLimiter = rateLimit({
   skip: () => env.NODE_ENV === 'test',
   message: { error: 'You are doing that too often. Please wait a few minutes and try again.' },
 });
+
+/** Chat messages per account: generous for real conversations, stops scripted spam. */
+export const chatLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (_req, res) => `chat:${(res.locals.user as AuthUser).id}`,
+  skip: () => env.NODE_ENV === 'test',
+  message: { error: 'You are sending messages too quickly. Please wait a moment.' },
+});

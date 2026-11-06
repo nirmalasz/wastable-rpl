@@ -20,7 +20,8 @@ export type NotificationType =
   | 'APPEAL_SUBMITTED'
   | 'APPEAL_DECIDED'
   | 'NEW_CASE'
-  | 'NEW_REVIEW';
+  | 'NEW_REVIEW'
+  | 'NEW_MESSAGE';
 
 /** Creates an in-app notification (FR-11). Pass a transaction handle to make it atomic. */
 export async function notify(

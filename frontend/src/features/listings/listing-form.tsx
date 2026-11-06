@@ -9,6 +9,7 @@ import { useAuth } from '@/features/auth';
 import { toLocalInput, humanize } from '@/lib/format';
 import {
   CATEGORIES,
+  type GeocodedAddress,
   type LatLng,
   type Listing,
   type ListingDraft,
@@ -76,8 +77,8 @@ export function ListingForm({
   savedLocation = null,
 }: {
   listing?: Listing;
-  /** The listing's current pin (edit mode, seller only). */
-  savedLocation?: LatLng | null;
+  /** The listing's current pin and its looked-up address (edit mode, seller only). */
+  savedLocation?: (LatLng & { address?: string | null }) | null;
 }) {
   const editing = Boolean(listing);
   const { call } = useAuth();
@@ -88,6 +89,11 @@ export function ListingForm({
   // On edit, only send coordinates when the seller changed or removed the pin.
   const [locationTouched, setLocationTouched] = useState(false);
   const [locating, setLocating] = useState(false);
+  // Street address for the pin, looked up by the API (OpenStreetMap); null if unknown.
+  const [place, setPlace] = useState<GeocodedAddress | null>(() =>
+    savedLocation?.address ? { address: savedLocation.address, area: null } : null,
+  );
+  const [lookingUp, setLookingUp] = useState(false);
   const pin: LatLng | null =
     form.pickupLat !== null && form.pickupLng !== null
       ? { lat: form.pickupLat, lng: form.pickupLng }
@@ -98,9 +104,11 @@ export function ListingForm({
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setForm((f) => ({ ...f, pickupLat: pos.coords.latitude, pickupLng: pos.coords.longitude }));
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setForm((f) => ({ ...f, pickupLat: lat, pickupLng: lng }));
         setLocationTouched(true);
         setLocating(false);
+        lookUp(lat, lng);
       },
       () => {
         setError('Could not get your location. You can still post without it.');
@@ -110,8 +118,24 @@ export function ListingForm({
     );
   }
 
+  async function lookUp(lat: number, lng: number) {
+    setPlace(null);
+    setLookingUp(true);
+    try {
+      const res = await call<{ result: GeocodedAddress | null }>(
+        `/geocode/reverse?lat=${lat}&lng=${lng}`,
+      );
+      setPlace(res.result);
+    } catch {
+      // The address is a convenience; the pin still works without it.
+    } finally {
+      setLookingUp(false);
+    }
+  }
+
   function clearLocation() {
     setForm((f) => ({ ...f, pickupLat: null, pickupLng: null }));
+    setPlace(null);
     setLocationTouched(true);
   }
   const [freeText, setFreeText] = useState('');
@@ -327,9 +351,24 @@ export function ListingForm({
             <span className="block font-medium">Exact pickup location (optional)</span>
             {pin ? (
               <div className="flex flex-wrap items-center gap-3 rounded-[10px] bg-brand-50 px-3 py-2">
-                <span>
-                  Saved pin: {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}
+                <span className="min-w-0 basis-full">
+                  <span className="block font-medium">
+                    {lookingUp ? 'Finding the address…' : (place?.address ?? 'Saved pin')}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}
+                  </span>
                 </span>
+                {place?.area && form.pickupArea.trim() !== place.area && (
+                  <button
+                    type="button"
+                    onClick={() => set('pickupArea', place.area ?? '')}
+                    className="text-brand-700 underline"
+                    title="Fill the public pickup area with the neighbourhood, not the street"
+                  >
+                    Use &ldquo;{place.area}&rdquo; as pickup area
+                  </button>
+                )}
                 <a
                   href={mapLink(pin)}
                   target="_blank"

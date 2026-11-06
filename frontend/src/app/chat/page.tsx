@@ -7,10 +7,10 @@ import { Avatar } from '@/components/avatar';
 import { RequireAuth } from '@/components/require-auth';
 import { Alert, Badge, Loading } from '@/components/ui';
 import { useAuth } from '@/features/auth';
-import { chatTime, useChatThreads, type ChatMessage } from '@/features/chat';
+import { chatTime, useChatThread } from '@/features/chat';
 import { ReviewForm } from '@/features/reviews';
 import { humanize } from '@/lib/format';
-import type { Transaction } from '@/lib/types';
+import type { ChatMessage, Transaction } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
 
 /* eslint-disable @next/next/no-img-element -- static icon SVGs exported from Figma */
@@ -25,15 +25,16 @@ const QUICK_REPLIES = [
 /** One conversation row: avatar, bold-italic name, preview, time on the right. */
 function ThreadRow({
   trx,
-  last,
   active,
   onSelect,
 }: {
   trx: Transaction;
-  last?: ChatMessage;
   active: boolean;
   onSelect: () => void;
 }) {
+  const last = trx.lastMessage;
+  // The open thread is being read right now, so do not show it as unread.
+  const unread = active ? 0 : trx.unreadCount;
   return (
     <li className="border-b border-[#d9d9d9] last:border-b-0">
       <button
@@ -50,11 +51,23 @@ function ThreadRow({
             {trx.counterpart.name}
           </span>
           <span className="block truncate text-sm text-ink">
-            {last ? last.text : trx.listingTitle}
+            {last ? `${last.mine ? 'You: ' : ''}${last.body}` : trx.listingTitle}
           </span>
         </span>
-        <span className="self-start text-xs font-medium text-[#9c9c9c]">
-          {chatTime(last?.sentAt ?? trx.createdAt)}
+        <span className="flex flex-col items-end gap-1 self-start">
+          <span
+            className={`text-xs font-medium ${unread > 0 ? 'text-brand-700' : 'text-[#9c9c9c]'}`}
+          >
+            {chatTime(last?.createdAt ?? trx.createdAt)}
+          </span>
+          {unread > 0 && (
+            <span
+              className="min-w-6 rounded-full bg-brand-700 px-1.5 text-center text-xs leading-6 font-medium text-white"
+              aria-label={`${unread} unread`}
+            >
+              {unread}
+            </span>
+          )}
         </span>
       </button>
     </li>
@@ -71,26 +84,31 @@ function Bubble({ m }: { m: ChatMessage }) {
             : 'rounded-tl-none bg-cream text-brand-700'
         }`}
       >
-        {m.text}
+        {m.body}
       </p>
-      <span className="mt-1 px-1 text-xs font-medium text-ink/80">{chatTime(m.sentAt)}</span>
+      <span className="mt-1 px-1 text-xs font-medium text-ink/80">
+        {chatTime(m.createdAt)}
+        {m.mine && m.readAt && ' · Read'}
+      </span>
     </div>
   );
 }
 
 function Thread({
   trx,
-  messages,
-  onSend,
   onBack,
   onReviewed,
+  onActivity,
 }: {
   trx: Transaction;
-  messages: ChatMessage[];
-  onSend: (text: string) => void;
   onBack: () => void;
   onReviewed: () => void;
+  /** Called when messages arrive or are sent, so the list can refresh its previews. */
+  onActivity: () => void;
 }) {
+  const { messages, loaded, error, send } = useChatThread(trx.id, onActivity);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string>();
   const [text, setText] = useState('');
   const [showInfo, setShowInfo] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
@@ -100,12 +118,22 @@ function Thread({
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [messages.length, trx.id]);
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!text.trim()) return;
-    onSend(text.trim());
-    setText('');
+    const body = text.trim();
+    if (!body || sending) return;
+    setSending(true);
+    setSendError(undefined);
+    try {
+      await send(body);
+      setText('');
+    } catch (err) {
+      setSendError((err as Error).message);
+    } finally {
+      setSending(false);
+    }
   }
+  const closed = trx.status === 'CANCELLED';
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[17px] bg-brand-50 shadow-card">
@@ -176,7 +204,9 @@ function Thread({
       </header>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && (
+        {!loaded && !error && <p className="text-center text-sm text-muted">Loading…</p>}
+        {error && <p className="text-center text-sm text-danger">{error}</p>}
+        {loaded && messages.length === 0 && (
           <p className="mx-auto max-w-sm rounded-[10px] bg-white/70 px-4 py-3 text-center text-sm text-ink">
             Say hi to arrange pickup for <strong>{trx.listingTitle}</strong>.
           </p>
@@ -205,7 +235,13 @@ function Thread({
       )}
 
       <div className="relative px-4 pb-4">
-        {showQuick && (
+        {closed && (
+          <p className="rounded-[16px] bg-white/80 px-4 py-3 text-center text-sm text-muted">
+            This trade was cancelled, so the chat is closed.
+          </p>
+        )}
+        {sendError && <p className="mb-2 text-center text-xs text-danger">{sendError}</p>}
+        {!closed && showQuick && (
           <ul className="absolute bottom-full left-4 mb-2 space-y-1 rounded-[14px] bg-white p-2 shadow-card">
             {QUICK_REPLIES.map((q) => (
               <li key={q}>
@@ -224,6 +260,7 @@ function Thread({
           </ul>
         )}
         <form
+          hidden={closed}
           onSubmit={submit}
           className="flex h-12 items-center gap-2 rounded-[16px] bg-white/80 pr-1 pl-3"
         >
@@ -247,7 +284,7 @@ function Thread({
           <button
             type="submit"
             aria-label="Send"
-            disabled={!text.trim()}
+            disabled={!text.trim() || sending}
             className="relative flex size-10 shrink-0 items-center justify-center transition hover:brightness-95 disabled:opacity-60"
           >
             <img
@@ -276,8 +313,16 @@ function Chat() {
   const router = useRouter();
   const params = useSearchParams();
   const trx = useApi<{ transactions: Transaction[] }>('/transactions/mine', token);
-  const { threads, send } = useChatThreads();
   const [query, setQuery] = useState('');
+  const reloadList = trx.reload;
+
+  // Refresh previews and unread badges for the other conversations.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') reloadList();
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, [reloadList]);
   const activeId = params.get('with');
 
   if (trx.error) return <Alert>{trx.error}</Alert>;
@@ -297,10 +342,6 @@ function Chat() {
   return (
     <div className="space-y-3">
       <h1 className="sr-only">Chat</h1>
-      <p className="text-xs text-muted">
-        Messages are saved on this device only for now. Use the contact under ••• to reach your
-        trade partner directly.
-      </p>
       <div className="grid h-[calc(100vh-11rem)] max-h-[720px] min-h-[480px] gap-4 lg:grid-cols-[320px_1fr]">
         <aside
           className={`min-h-0 flex-col overflow-hidden rounded-[17px] bg-white shadow-card ${
@@ -329,7 +370,6 @@ function Chat() {
                 <ThreadRow
                   key={t.id}
                   trx={t}
-                  last={threads[t.id]?.at(-1)}
                   active={t.id === active?.id}
                   onSelect={() => select(t.id)}
                 />
@@ -341,10 +381,10 @@ function Chat() {
         {active ? (
           <Thread
             trx={active}
-            messages={threads[active.id] ?? []}
-            onSend={(text) => send(active.id, text)}
+            key={active.id}
             onBack={() => select(null)}
             onReviewed={trx.reload}
+            onActivity={reloadList}
           />
         ) : (
           <section className="hidden items-center justify-center rounded-[17px] bg-brand-50 p-6 text-center text-ink shadow-card lg:flex">

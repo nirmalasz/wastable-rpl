@@ -1,35 +1,97 @@
 'use client';
 
-import { useCallback } from 'react';
-import { createLocalStore } from '@/lib/local-store';
-import type { Listing } from '@/lib/types';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useAuth } from '@/features/auth';
+import type { CartEntry, Listing } from '@/lib/types';
 
 /**
- * Cart of listings the user wants to claim. The API has no cart endpoint yet, so the
- * cart lives in this browser's localStorage; claiming still goes through the API.
+ * The signed-in user's cart, stored by the API (/cart). One shared store so the sidebar
+ * count, the "+" on listing cards and the cart page always agree.
  */
-export type CartItem = Pick<
-  Listing,
-  'id' | 'title' | 'photoUrl' | 'listingType' | 'price' | 'quantity' | 'pickupArea' | 'expiryDate'
->;
+type Call = ReturnType<typeof useAuth>['call'];
 
-const store = createLocalStore<CartItem[]>('wastable.cart', []);
+interface State {
+  token: string | null;
+  items: CartEntry[];
+  loaded: boolean;
+}
+
+let state: State = { token: null, items: [], loaded: false };
+const EMPTY: State = { token: null, items: [], loaded: false };
+const listeners = new Set<() => void>();
+const emit = (next: Partial<State>) => {
+  state = { ...state, ...next };
+  listeners.forEach((l) => l());
+};
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
+
+/** Before the cart had an API it lived in localStorage; move those items over once. */
+const LEGACY_KEY = 'wastable.cart';
+async function migrateLegacy(call: Call) {
+  let ids: string[] = [];
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) return;
+    ids = (JSON.parse(raw) as { id: string }[]).map((i) => i.id);
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    return;
+  }
+  // Items that were claimed or removed meanwhile are simply skipped.
+  await Promise.allSettled(ids.map((listingId) => call('/cart', { body: { listingId } })));
+}
+
+async function load(token: string, call: Call) {
+  await migrateLegacy(call);
+  const res = await call<{ items: CartEntry[] }>('/cart');
+  if (state.token === token) emit({ items: res.items, loaded: true });
+}
 
 export function useCart() {
-  const items = store.useValue();
+  const { token, call } = useAuth();
+  const snapshot = useSyncExternalStore(
+    subscribe,
+    () => state,
+    () => EMPTY,
+  );
 
-  const add = useCallback((l: Listing) => {
-    const current = store.get();
-    if (current.some((i) => i.id === l.id)) return;
-    const { id, title, photoUrl, listingType, price, quantity, pickupArea, expiryDate } = l;
-    store.set([
-      ...current,
-      { id, title, photoUrl, listingType, price, quantity, pickupArea, expiryDate },
-    ]);
-  }, []);
+  useEffect(() => {
+    // Several components use the cart; only the first one for a given user starts the load.
+    if (state.token === token) return;
+    emit({ token, items: [], loaded: false });
+    if (token) load(token, call).catch(() => emit({ loaded: true }));
+  }, [token, call]);
 
-  const remove = useCallback((id: string) => store.set(store.get().filter((i) => i.id !== id)), []);
-  const has = useCallback((id: string) => items.some((i) => i.id === id), [items]);
+  const reload = useCallback(() => {
+    if (token) return load(token, call);
+  }, [token, call]);
 
-  return { items, add, remove, has };
+  const add = useCallback(
+    async (l: Listing) => {
+      await call('/cart', { body: { listingId: l.id } });
+      await reload();
+    },
+    [call, reload],
+  );
+
+  const remove = useCallback(
+    async (listingId: string) => {
+      // Optimistic: drop it right away, then confirm with the server.
+      emit({ items: state.items.filter((i) => i.listing.id !== listingId) });
+      await call(`/cart/${listingId}`, { method: 'DELETE' });
+      await reload();
+    },
+    [call, reload],
+  );
+
+  const items = useMemo(
+    () => (token === snapshot.token ? snapshot.items : []),
+    [token, snapshot.token, snapshot.items],
+  );
+  const has = useCallback((id: string) => items.some((i) => i.listing.id === id), [items]);
+
+  return { items, loaded: snapshot.loaded, add, remove, has, reload };
 }

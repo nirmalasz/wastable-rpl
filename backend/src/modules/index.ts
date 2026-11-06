@@ -7,6 +7,8 @@ import { transactionsRouter } from './transactions/transactions.routes.js';
 import { reviewsRouter } from './reviews/reviews.routes.js';
 import { notificationsRouter } from './notifications/notifications.routes.js';
 import { uploadsRouter } from './uploads/uploads.routes.js';
+import { chatRouter } from './chat/chat.routes.js';
+import { cartRouter } from './cart/cart.routes.js';
 import { moderationRouter } from './moderation/moderation.routes.js';
 
 /** All API routes, mounted under /api in app.ts. */
@@ -22,4 +24,6 @@ apiRouter.use(
   notificationsRouter,
   moderationRouter,
   uploadsRouter,
+  chatRouter,
+  cartRouter,
 );

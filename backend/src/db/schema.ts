@@ -82,6 +82,8 @@ export const listings = pgTable(
     pickupArea: text('pickup_area').notNull(),
     pickupLat: numeric('pickup_lat', { precision: 9, scale: 6 }),
     pickupLng: numeric('pickup_lng', { precision: 9, scale: 6 }),
+    /** Street address looked up from the pin (reverse geocoding). Private like the pin itself. */
+    pickupAddress: text('pickup_address'),
     isUrgent: boolean('is_urgent').notNull().default(false),
     status: listingStatusEnum('status').notNull().default('AVAILABLE'),
     dietFlags: text('diet_flags').array().notNull().default([]),
@@ -118,6 +120,40 @@ export const waitlistEntries = pgTable(
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('waitlist_listing_user_uq').on(t.listingId, t.userId)],
+);
+
+/** Trade chat: one thread per transaction, between its buyer and seller. */
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => users.id),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Set when the other participant has seen it. */
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (t) => [index('messages_transaction_created_idx').on(t.transactionId, t.createdAt)],
+);
+
+/** Listings a user saved to claim later. */
+export const cartItems = pgTable(
+  'cart_items',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('cart_items_user_listing_uq').on(t.userId, t.listingId)],
 );
 
 export const reviews = pgTable(

@@ -82,13 +82,16 @@ describe.skipIf(!dbUp)('marketplace flow', () => {
     const created = await post(
       '/api/listings',
       seller.token,
-      listingBody({ title: 'Nasi goreng babi' }),
+      // A word unique to this run, so leftovers from earlier runs cannot push it off the page.
+      listingBody({ title: `Nasi goreng babi tok${run}` }),
     );
     expect(created.status).toBe(201);
     expect(created.body.listing.dietFlags).toContain('pork');
     const id = created.body.listing.id as string;
 
-    const found = await request(app).get('/api/search').query({ q: 'nasi goreng' });
+    const found = await request(app)
+      .get('/api/search')
+      .query({ q: `tok${run}` });
     expect(found.body.results.some((l: { id: string }) => l.id === id)).toBe(true);
     expect(found.body.results[0]).not.toHaveProperty('pickupLat');
 
@@ -157,7 +160,7 @@ describe.skipIf(!dbUp)('marketplace flow', () => {
     const id = created.body.listing.id as string;
 
     const mine = await request(app).get(`/api/listings/${id}`).set(bearer(seller.token));
-    expect(mine.body.pickupLocation).toEqual({ lat: -6.3646, lng: 106.8287 });
+    expect(mine.body.pickupLocation).toEqual({ lat: -6.3646, lng: 106.8287, address: null });
     const theirs = await request(app).get(`/api/listings/${id}`).set(bearer(viewer.token));
     expect(theirs.body.pickupLocation).toBeNull();
     expect(JSON.stringify(theirs.body)).not.toContain('106.8287');

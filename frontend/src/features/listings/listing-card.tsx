@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { Badge } from '@/components/ui';
+import { useAuth } from '@/features/auth';
 import { useCart } from '@/features/cart';
 import { rupiah, timeLeft } from '@/lib/format';
 import type { Listing } from '@/lib/types';
@@ -21,8 +24,27 @@ export function ListingCard({
   /** Hide the add-to-cart button, e.g. on the owner's own listings. */
   cartable?: boolean;
 }) {
+  const { user } = useAuth();
+  const router = useRouter();
   const cart = useCart();
   const inCart = cart.has(l.id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  // Your own listings never get a cart button.
+  const showCart = cartable && user?.id !== l.sellerId;
+
+  async function toggleCart() {
+    if (!user) return router.push('/login');
+    setBusy(true);
+    setError(undefined);
+    try {
+      await (inCart ? cart.remove(l.id) : cart.add(l));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="group flex h-full flex-col rounded-[20px] bg-white p-3 shadow-card transition hover:-translate-y-0.5">
@@ -64,13 +86,14 @@ export function ListingCard({
           {timeLeft(l.expiryDate)}
           {l.sellerRating != null && ` · ★ ${l.sellerRating.toFixed(1)}`}
         </span>
-        {cartable && (
+        {showCart && (
           <button
             type="button"
-            onClick={() => (inCart ? cart.remove(l.id) : cart.add(l))}
+            onClick={toggleCart}
+            disabled={busy}
             aria-pressed={inCart}
-            title={inCart ? 'Remove from cart' : 'Add to cart'}
-            className={`shrink-0 rounded-full transition hover:scale-110 ${inCart ? 'bg-brand-50 ring-2 ring-brand-500' : ''}`}
+            title={error ?? (inCart ? 'Remove from cart' : 'Add to cart')}
+            className={`shrink-0 rounded-full transition hover:scale-110 disabled:opacity-50 ${inCart ? 'bg-brand-50 ring-2 ring-brand-500' : ''}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -83,6 +106,11 @@ export function ListingCard({
           </button>
         )}
       </div>
+      {error && (
+        <p role="alert" className="pt-1 text-xs text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

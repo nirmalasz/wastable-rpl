@@ -3,27 +3,29 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert } from '@/components/ui';
+import { Alert, Badge, Loading } from '@/components/ui';
 import { useAuth } from '@/features/auth';
-import { useCart, type CartItem } from '@/features/cart';
+import { useCart } from '@/features/cart';
 import { priceLabel } from '@/features/listings/listing-card';
-import { timeLeft } from '@/lib/format';
+import { humanize, timeLeft } from '@/lib/format';
+import type { CartEntry, Listing } from '@/lib/types';
 
-const actionLabel = (i: CartItem) =>
+const actionLabel = (i: Listing) =>
   i.listingType === 'SELL' ? 'Buy' : i.listingType === 'EXCHANGE' ? 'Offer exchange' : 'Claim';
 
 /** Cart row from the Figma "cart" screen: photo, product name, yellow action button. */
 function CartRow({
-  item,
+  entry,
   busy,
   onClaim,
   onRemove,
 }: {
-  item: CartItem;
+  entry: CartEntry;
   busy: boolean;
   onClaim: () => void;
   onRemove: () => void;
 }) {
+  const item = entry.listing;
   return (
     <li className="flex gap-4 rounded-[17px] bg-white p-4 shadow-card sm:gap-5 sm:p-5">
       <Link href={`/listings/${item.id}`} className="shrink-0">
@@ -48,6 +50,15 @@ function CartRow({
         </p>
 
         <div className="mt-auto flex flex-wrap items-center justify-end gap-3 pt-3">
+          {!entry.available && (
+            <span className="mr-auto">
+              <Badge tone="danger">
+                {item.status === 'AVAILABLE'
+                  ? 'Expired'
+                  : `No longer available (${humanize(item.status)})`}
+              </Badge>
+            </span>
+          )}
           <button
             type="button"
             onClick={onRemove}
@@ -58,7 +69,7 @@ function CartRow({
           <button
             type="button"
             onClick={onClaim}
-            disabled={busy}
+            disabled={busy || !entry.available}
             className="h-11 w-full rounded-[6.5px] bg-accent px-6 text-base font-medium italic text-black shadow-button transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-[194px]"
           >
             {busy ? 'Working…' : actionLabel(item)}
@@ -71,16 +82,17 @@ function CartRow({
 
 function Cart() {
   const { call } = useAuth();
-  const { items, remove } = useCart();
+  const { items, loaded, remove, reload } = useCart();
   const [busyId, setBusyId] = useState<string>();
   const [notice, setNotice] = useState<{ kind: 'error' | 'success'; text: string }>();
 
-  async function claim(item: CartItem) {
+  async function claim(item: Listing) {
     setBusyId(item.id);
     setNotice(undefined);
     try {
       await call(`/listings/${item.id}/claim`, { method: 'POST' });
-      remove(item.id);
+      // The API takes a claimed item out of the cart; refresh to match.
+      await reload();
       setNotice({
         kind: 'success',
         text: `"${item.title}" is reserved for you. Arrange pickup in chat, then confirm in your dashboard.`,
@@ -97,7 +109,9 @@ function Cart() {
       <h1 className="sr-only">Cart</h1>
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 
-      {items.length === 0 ? (
+      {!loaded ? (
+        <Loading />
+      ) : items.length === 0 ? (
         <div className="rounded-[17px] bg-white p-8 text-center shadow-card">
           <p className="text-lg">Your cart is empty.</p>
           <p className="mt-1 text-sm text-muted">
@@ -109,13 +123,17 @@ function Cart() {
         </div>
       ) : (
         <ul className="space-y-6">
-          {items.map((i) => (
+          {items.map((e) => (
             <CartRow
-              key={i.id}
-              item={i}
-              busy={busyId === i.id}
-              onClaim={() => claim(i)}
-              onRemove={() => remove(i.id)}
+              key={e.listing.id}
+              entry={e}
+              busy={busyId === e.listing.id}
+              onClaim={() => claim(e.listing)}
+              onRemove={() =>
+                remove(e.listing.id).catch((err: Error) =>
+                  setNotice({ kind: 'error', text: err.message }),
+                )
+              }
             />
           ))}
         </ul>
