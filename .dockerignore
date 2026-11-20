@@ -2,7 +2,9 @@
 **/.next
 **/dist
 **/coverage
-**/uploads
+# Only the photo folders (UPLOAD_DIR), not src/modules/uploads
+uploads
+backend/uploads
 **/.env
 **/.env.*
 !**/.env.example
