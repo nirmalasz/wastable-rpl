@@ -1,6 +1,8 @@
 # Testing
 
-WASTABLE has two test suites, both on [Vitest](https://vitest.dev):
+WASTABLE has two test suites, both on [Vitest](https://vitest.dev). This page is the
+developer guide; the formal test plan, every test case, the test log and the incident report are
+in [TEST-PLAN.md](TEST-PLAN.md) (IEEE 829 style).
 
 | Suite    | Where                      | Runs in | What it covers                                                         |
 | -------- | -------------------------- | ------- | ---------------------------------------------------------------------- |
@@ -36,9 +38,12 @@ Coverage on 6 Nov 2026:
 
 | Suite    | Tests | Statements | Lines |
 | -------- | ----- | ---------- | ----- |
-| Backend  | 61    | 80%        | 85%   |
+| Backend  | 100   | 82%        | 87%   |
 | Frontend | 43    | 23%        | 22%   |
 
+- **Use cases:** `seller.test.ts` and `buyer.test.ts` test each use case from that person's point
+  of view (main, alternate and exception flows). Scenario IDs match
+  [USE-CASE-TESTS.md](USE-CASE-TESTS.md).
 - **Backend:** every route has at least one test. The DB-backed files are `flow.test.ts`
   (register → list → claim → complete → review, waitlist, moderation and appeals, password
   reset, scheduler), `security.test.ts` (privacy, upload checks, rate limits, suspension) and

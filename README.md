@@ -54,6 +54,8 @@ The home page shows **API status: connected** when the frontend can reach the ba
 
 `npm test` runs both suites. The backend's integration tests need PostgreSQL (`npm run db:up`
 and `npm run db:migrate -w backend`); without it they are skipped locally and fail in CI.
+The test plan and all test cases are in [docs/TEST-PLAN.md](docs/TEST-PLAN.md); seller and
+buyer use-case scenarios are in [docs/USE-CASE-TESTS.md](docs/USE-CASE-TESTS.md).
 See [docs/TESTING.md](docs/TESTING.md) for what is covered, how to write tests, and
 troubleshooting (including the npm lockfile issue that breaks Vitest).
 
@@ -75,7 +77,7 @@ each setting. The ones you are most likely to change:
 .
 ├─ frontend/                Next.js app (App Router)
 ├─ backend/                 Express API
-├─ docs/                    Project documentation (TESTING.md)
+├─ docs/                    TESTING.md, TEST-PLAN.md (IEEE 829), USE-CASE-TESTS.md
 ├─ .github/workflows/ci.yml CI pipeline
 ├─ docker-compose.yml       PostgreSQL 17 + Redis 7 for development
 └─ package.json             npm workspaces + shared scripts

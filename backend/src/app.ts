@@ -32,7 +32,14 @@ export function createApp() {
   if (env.NODE_ENV !== 'test') app.use(pinoHttp({ logger }));
   app.use(
     '/api',
-    rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }),
+    rateLimit({
+      windowMs: 60_000,
+      limit: 120,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      // Like the per-route limiters: a test file makes far more than 120 requests a minute.
+      skip: () => env.NODE_ENV === 'test',
+    }),
   );
 
   app.use('/api', apiRouter);
