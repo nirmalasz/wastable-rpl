@@ -29,7 +29,9 @@ export function createApp() {
       },
       express.static(uploadDir, { dotfiles: 'deny', index: false, maxAge: '7d', immutable: true }),
     );
-  app.use(cors({ origin: corsOrigins, credentials: true }));
+  // maxAge lets browsers reuse a preflight answer for 2 hours (Chrome's cap) instead of sending
+  // an extra OPTIONS round trip before every authenticated request.
+  app.use(cors({ origin: corsOrigins, credentials: true, maxAge: 7200 }));
   app.use(express.json({ limit: '1mb' }));
   if (env.NODE_ENV !== 'test') app.use(pinoHttp({ logger }));
   app.use(

@@ -37,7 +37,8 @@ export async function api<T>(
       ...init,
       method: init.method ?? (body === undefined ? 'GET' : 'POST'),
       headers: {
-        'Content-Type': 'application/json',
+        // Only when there is a body: a plain GET without it needs no CORS preflight.
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
