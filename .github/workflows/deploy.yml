@@ -19,6 +19,23 @@ permissions:
 
 env:
   HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+  # Calls the Heroku Platform API and prints Heroku's error message when a call fails.
+  # Usage: heroku_api METHOD PATH JSON_BODY [ACCEPT_VARIANT]
+  HEROKU_API_FN: |
+    heroku_api() {
+      local out status
+      out=$(mktemp)
+      status=$(curl -sS -o "$out" -w '%{http_code}' -X "$1" "https://api.heroku.com$2" \
+        -H "Authorization: Bearer $HEROKU_API_KEY" \
+        -H "Accept: application/vnd.heroku+json; version=3${4:+.$4}" \
+        -H "Content-Type: application/json" \
+        -d "$3")
+      if [ "$status" -ge 300 ]; then
+        echo "::error::Heroku API $1 $2 returned HTTP $status: $(cat "$out")"
+        return 1
+      fi
+      echo "Heroku API $1 $2 -> HTTP $status"
+    }
 
 jobs:
   api:
@@ -28,24 +45,31 @@ jobs:
     environment: heroku
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      APP: ${{ vars.HEROKU_API_APP }}
     steps:
+      - name: Check settings
+        run: |
+          ok=true
+          [ -n "$HEROKU_API_KEY" ] || { echo "::error::Secret HEROKU_API_KEY is missing from the 'heroku' environment"; ok=false; }
+          [ -n "$APP" ] || { echo "::error::Variable HEROKU_API_APP is missing (it must be an environment *variable*, not a secret)"; ok=false; }
+          case "$APP" in *[!a-z0-9-]*) echo "::error::HEROKU_API_APP must be the app *name* from the Heroku dashboard (e.g. wastable-api), not a URL. Got: $APP"; ok=false ;; esac
+          $ok
+
       - uses: actions/checkout@v7
 
       # Same as `heroku stack:set container`, which the Heroku dashboard cannot do
       - name: Use the container stack
         run: |
-          curl -fsS -o /dev/null -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_API_APP }}" \
-            -H "Authorization: Bearer $HEROKU_API_KEY" \
-            -H "Accept: application/vnd.heroku+json; version=3" \
-            -H "Content-Type: application/json" \
-            -d '{"build_stack":"container"}'
+          eval "$HEROKU_API_FN"
+          heroku_api PATCH "/apps/$APP" '{"build_stack":"container"}'
 
       - name: Log in to the Heroku container registry
         run: echo "$HEROKU_API_KEY" | docker login registry.heroku.com --username=_ --password-stdin
 
       - name: Build and push the image
         run: |
-          IMAGE=registry.heroku.com/${{ vars.HEROKU_API_APP }}/web
+          IMAGE=registry.heroku.com/$APP/web
           docker buildx build --platform linux/amd64 --provenance=false --load \
             -f backend/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
@@ -53,11 +77,9 @@ jobs:
 
       - name: Release (migrations run when the new dyno starts)
         run: |
-          curl -fsS -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_API_APP }}/formation" \
-            -H "Authorization: Bearer $HEROKU_API_KEY" \
-            -H "Accept: application/vnd.heroku+json; version=3.docker-releases" \
-            -H "Content-Type: application/json" \
-            -d "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}"
+          eval "$HEROKU_API_FN"
+          heroku_api PATCH "/apps/$APP/formation" \
+            "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}" docker-releases
 
   web:
     name: Web -> ${{ vars.HEROKU_WEB_APP }}
@@ -68,34 +90,42 @@ jobs:
     environment: heroku
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      APP: ${{ vars.HEROKU_WEB_APP }}
+      NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
     steps:
+      - name: Check settings
+        run: |
+          ok=true
+          [ -n "$HEROKU_API_KEY" ] || { echo "::error::Secret HEROKU_API_KEY is missing from the 'heroku' environment"; ok=false; }
+          [ -n "$APP" ] || { echo "::error::Variable HEROKU_WEB_APP is missing (it must be an environment *variable*, not a secret)"; ok=false; }
+          case "$APP" in *[!a-z0-9-]*) echo "::error::HEROKU_WEB_APP must be the app *name* from the Heroku dashboard (e.g. wastable-api), not a URL. Got: $APP"; ok=false ;; esac
+          [ -n "$NEXT_PUBLIC_API_URL" ] || { echo "::error::Variable NEXT_PUBLIC_API_URL is missing (it must be an environment *variable*, not a secret)"; ok=false; }
+          case "$NEXT_PUBLIC_API_URL" in https://*/api) ;; *) echo "::error::NEXT_PUBLIC_API_URL must look like https://<api-app>.herokuapp.com/api (no trailing slash). Got: $NEXT_PUBLIC_API_URL"; ok=false ;; esac
+          $ok
+
       - uses: actions/checkout@v7
 
       # Same as `heroku stack:set container`, which the Heroku dashboard cannot do
       - name: Use the container stack
         run: |
-          curl -fsS -o /dev/null -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_WEB_APP }}" \
-            -H "Authorization: Bearer $HEROKU_API_KEY" \
-            -H "Accept: application/vnd.heroku+json; version=3" \
-            -H "Content-Type: application/json" \
-            -d '{"build_stack":"container"}'
+          eval "$HEROKU_API_FN"
+          heroku_api PATCH "/apps/$APP" '{"build_stack":"container"}'
 
       - name: Log in to the Heroku container registry
         run: echo "$HEROKU_API_KEY" | docker login registry.heroku.com --username=_ --password-stdin
 
       - name: Build and push the image
         run: |
-          IMAGE=registry.heroku.com/${{ vars.HEROKU_WEB_APP }}/web
+          IMAGE=registry.heroku.com/$APP/web
           docker buildx build --platform linux/amd64 --provenance=false --load \
-            --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} \
+            --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
             -f frontend/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
           echo "IMAGE_ID=$(docker inspect "$IMAGE" --format='{{.Id}}')" >> "$GITHUB_ENV"
 
       - name: Release
         run: |
-          curl -fsS -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_WEB_APP }}/formation" \
-            -H "Authorization: Bearer $HEROKU_API_KEY" \
-            -H "Accept: application/vnd.heroku+json; version=3.docker-releases" \
-            -H "Content-Type: application/json" \
-            -d "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}"
+          eval "$HEROKU_API_FN"
+          heroku_api PATCH "/apps/$APP/formation" \
+            "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}" docker-releases
