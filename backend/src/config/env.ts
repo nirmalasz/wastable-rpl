@@ -93,4 +93,7 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
-export const corsOrigins = env.CORS_ORIGIN.split(',').map((o) => o.trim());
+/** Browsers send Origin without a trailing slash, so "https://x.app/" in config still matches. */
+export const corsOrigins = env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/+$/, ''));
+/** The web app's base URL, used for links in emails. */
+export const webAppUrl = corsOrigins[0]!;

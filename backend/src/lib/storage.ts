@@ -14,6 +14,16 @@ import { env } from '../config/env.js';
  */
 export const uploadDir = path.resolve(env.UPLOAD_DIR);
 
+/**
+ * The account-level S3 endpoint. Cloudflare's bucket page shows the endpoint with the bucket
+ * name appended (https://<account>.r2.cloudflarestorage.com/<bucket>); accept that too instead
+ * of storing every object under a doubled "<bucket>/" prefix.
+ */
+export function s3Endpoint(endpoint: string, bucket: string): string {
+  const base = endpoint.trim().replace(/\/+$/, '');
+  return base.endsWith(`/${bucket}`) ? base.slice(0, -bucket.length - 1) : base;
+}
+
 const s3 = env.S3_BUCKET
   ? {
       client: new AwsClient({
@@ -22,7 +32,8 @@ const s3 = env.S3_BUCKET
         service: 's3',
         region: env.S3_REGION,
       }),
-      objectUrl: (key: string) => `${env.S3_ENDPOINT!.replace(/\/+$/, '')}/${env.S3_BUCKET}/${key}`,
+      objectUrl: (key: string) =>
+        `${s3Endpoint(env.S3_ENDPOINT!, env.S3_BUCKET!)}/${env.S3_BUCKET}/${key}`,
     }
   : null;
 

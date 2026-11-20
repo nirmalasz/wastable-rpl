@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
-import { env } from '../../config/env.js';
+import { env, webAppUrl } from '../../config/env.js';
 import { getDb } from '../../db/client.js';
 import { users } from '../../db/schema.js';
 import { hashPassword, sha256, signToken, verifyPassword, verifyToken } from '../../lib/crypto.js';
@@ -96,7 +96,7 @@ authRouter.post('/auth/register', authLimiter, async (req, res) => {
   await sendMail(
     created.email,
     'Verify your WASTABLE email',
-    `Open this link to verify: ${env.CORS_ORIGIN.split(',')[0]}/verify?token=${verifyTokenValue}`,
+    `Open this link to verify: ${webAppUrl}/verify?token=${verifyTokenValue}`,
   );
   res.status(201).json({
     token: accessToken(created),
@@ -173,7 +173,7 @@ authRouter.post('/auth/password-reset/request', authLimiter, async (req, res) =>
     await sendMail(
       row.email,
       'Reset your WASTABLE password',
-      `This link is valid for ${env.PASSWORD_RESET_TTL_MINUTES} minutes: ${env.CORS_ORIGIN.split(',')[0]}/reset?token=${devToken}`,
+      `This link is valid for ${env.PASSWORD_RESET_TTL_MINUTES} minutes: ${webAppUrl}/reset?token=${devToken}`,
     );
   }
   // Same response whether or not the account exists, so emails cannot be enumerated.
