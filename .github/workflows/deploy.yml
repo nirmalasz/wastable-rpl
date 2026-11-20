@@ -70,10 +70,21 @@ jobs:
       - name: Build and push the image
         run: |
           IMAGE=registry.heroku.com/$APP/web
-          docker buildx build --platform linux/amd64 --provenance=false --load \
-            -f backend/Dockerfile -t "$IMAGE" .
-          docker push "$IMAGE"
-          echo "IMAGE_ID=$(docker inspect "$IMAGE" --format='{{.Id}}')" >> "$GITHUB_ENV"
+          # Heroku only accepts classic Docker v2 manifests (no OCI index / attestations)
+          docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+            --output type=image,name="$IMAGE",push=true,oci-mediatypes=false \
+            -f backend/Dockerfile .
+          # Heroku releases by the image *config* digest, read back from its registry
+          # (docker inspect's .Id is a different digest with the containerd image store)
+          MANIFEST=$(docker buildx imagetools inspect --raw "$IMAGE")
+          if echo "$MANIFEST" | jq -e '.manifests' > /dev/null; then
+            DIGEST=$(echo "$MANIFEST" | jq -r '[.manifests[] | select(.platform.architecture == "amd64")][0].digest')
+            MANIFEST=$(docker buildx imagetools inspect --raw "$IMAGE@$DIGEST")
+          fi
+          IMAGE_ID=$(echo "$MANIFEST" | jq -r '.config.digest')
+          case "$IMAGE_ID" in sha256:*) ;; *) echo "::error::Could not read the image digest. Manifest: $MANIFEST"; exit 1 ;; esac
+          echo "Image config digest: $IMAGE_ID"
+          echo "IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
 
       - name: Release (migrations run when the new dyno starts)
         run: |
@@ -118,11 +129,22 @@ jobs:
       - name: Build and push the image
         run: |
           IMAGE=registry.heroku.com/$APP/web
-          docker buildx build --platform linux/amd64 --provenance=false --load \
+          # Heroku only accepts classic Docker v2 manifests (no OCI index / attestations)
+          docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+            --output type=image,name="$IMAGE",push=true,oci-mediatypes=false \
             --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
-            -f frontend/Dockerfile -t "$IMAGE" .
-          docker push "$IMAGE"
-          echo "IMAGE_ID=$(docker inspect "$IMAGE" --format='{{.Id}}')" >> "$GITHUB_ENV"
+            -f frontend/Dockerfile .
+          # Heroku releases by the image *config* digest, read back from its registry
+          # (docker inspect's .Id is a different digest with the containerd image store)
+          MANIFEST=$(docker buildx imagetools inspect --raw "$IMAGE")
+          if echo "$MANIFEST" | jq -e '.manifests' > /dev/null; then
+            DIGEST=$(echo "$MANIFEST" | jq -r '[.manifests[] | select(.platform.architecture == "amd64")][0].digest')
+            MANIFEST=$(docker buildx imagetools inspect --raw "$IMAGE@$DIGEST")
+          fi
+          IMAGE_ID=$(echo "$MANIFEST" | jq -r '.config.digest')
+          case "$IMAGE_ID" in sha256:*) ;; *) echo "::error::Could not read the image digest. Manifest: $MANIFEST"; exit 1 ;; esac
+          echo "Image config digest: $IMAGE_ID"
+          echo "IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
 
       - name: Release
         run: |
