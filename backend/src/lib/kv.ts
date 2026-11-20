@@ -23,7 +23,7 @@ const live = (key: string) => {
 async function viaRedis<T>(
   op: (r: ReturnType<typeof getRedis>) => Promise<T>,
 ): Promise<T | undefined> {
-  if (env.NODE_ENV === 'test' || Date.now() < redisDownUntil) return undefined;
+  if (env.NODE_ENV === 'test' || !env.REDIS_URL || Date.now() < redisDownUntil) return undefined;
   try {
     return await Promise.race([
       op(getRedis()),

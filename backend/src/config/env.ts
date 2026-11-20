@@ -15,7 +15,13 @@ const envSchema = z
     TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 
     DATABASE_URL: z.string().default('postgres://wastable:wastable@localhost:5432/wastable'),
-    REDIS_URL: z.string().default('redis://localhost:6379'),
+    /** Unset or empty turns Redis off (AI cache/quota then live in process memory). */
+    REDIS_URL: z.string().default(''),
+    /** Apply pending database migrations when the server starts (one instance at a time). */
+    MIGRATE_ON_START: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
 
     JWT_SECRET: z.string().min(32).default(DEV_JWT_SECRET),
     PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(10),
@@ -53,15 +59,32 @@ const envSchema = z
     SMTP_PASSWORD: z.string().optional(),
     MAIL_FROM: z.string().default('WASTABLE <no-reply@wastable.app>'),
 
-    R2_ACCOUNT_ID: z.string().optional(),
-    R2_ACCESS_KEY_ID: z.string().optional(),
-    R2_SECRET_ACCESS_KEY: z.string().optional(),
-    R2_BUCKET: z.string().default('wastable-images'),
+    /**
+     * S3-compatible photo storage (Cloudflare R2, AWS S3, Backblaze B2, ...). When S3_BUCKET is
+     * empty, photos are written to UPLOAD_DIR on local disk, which Heroku wipes on every restart.
+     */
+    S3_ENDPOINT: z.string().optional(),
+    S3_REGION: z.string().default('auto'),
+    S3_BUCKET: z.string().optional(),
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    /** Public base URL the bucket is served from, e.g. https://pub-xxxx.r2.dev */
+    S3_PUBLIC_URL: z.string().optional(),
   })
   .refine((e) => e.NODE_ENV !== 'production' || e.JWT_SECRET !== DEV_JWT_SECRET, {
     message: 'JWT_SECRET must be set in production',
     path: ['JWT_SECRET'],
-  });
+  })
+  .refine(
+    (e) =>
+      !e.S3_BUCKET ||
+      Boolean(e.S3_ENDPOINT && e.S3_ACCESS_KEY_ID && e.S3_SECRET_ACCESS_KEY && e.S3_PUBLIC_URL),
+    {
+      message:
+        'S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and S3_PUBLIC_URL are required with S3_BUCKET',
+      path: ['S3_BUCKET'],
+    },
+  );
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {

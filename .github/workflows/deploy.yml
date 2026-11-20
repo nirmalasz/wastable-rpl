@@ -1,0 +1,101 @@
+name: Deploy to Heroku
+
+# Manual only: Actions tab -> "Deploy to Heroku" -> Run workflow. See DEPLOYMENT.md for setup.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which app to deploy
+        type: choice
+        options: [both, api, web]
+        default: both
+
+concurrency:
+  group: deploy-heroku
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+
+jobs:
+  api:
+    name: API -> ${{ vars.HEROKU_API_APP }}
+    if: inputs.target != 'web'
+    # Secrets and variables come from Settings -> Environments -> heroku
+    environment: heroku
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same as `heroku stack:set container`, which the Heroku dashboard cannot do
+      - name: Use the container stack
+        run: |
+          curl -fsS -o /dev/null -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_API_APP }}" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Content-Type: application/json" \
+            -d '{"build_stack":"container"}'
+
+      - name: Log in to the Heroku container registry
+        run: echo "$HEROKU_API_KEY" | docker login registry.heroku.com --username=_ --password-stdin
+
+      - name: Build and push the image
+        run: |
+          IMAGE=registry.heroku.com/${{ vars.HEROKU_API_APP }}/web
+          docker buildx build --platform linux/amd64 --provenance=false --load \
+            -f backend/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE_ID=$(docker inspect "$IMAGE" --format='{{.Id}}')" >> "$GITHUB_ENV"
+
+      - name: Release (migrations run when the new dyno starts)
+        run: |
+          curl -fsS -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_API_APP }}/formation" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Accept: application/vnd.heroku+json; version=3.docker-releases" \
+            -H "Content-Type: application/json" \
+            -d "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}"
+
+  web:
+    name: Web -> ${{ vars.HEROKU_WEB_APP }}
+    needs: api
+    # Still deploy the web app when only it was selected (api job skipped)
+    if: ${{ always() && inputs.target != 'api' && needs.api.result != 'failure' }}
+    # Secrets and variables come from Settings -> Environments -> heroku
+    environment: heroku
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same as `heroku stack:set container`, which the Heroku dashboard cannot do
+      - name: Use the container stack
+        run: |
+          curl -fsS -o /dev/null -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_WEB_APP }}" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Content-Type: application/json" \
+            -d '{"build_stack":"container"}'
+
+      - name: Log in to the Heroku container registry
+        run: echo "$HEROKU_API_KEY" | docker login registry.heroku.com --username=_ --password-stdin
+
+      - name: Build and push the image
+        run: |
+          IMAGE=registry.heroku.com/${{ vars.HEROKU_WEB_APP }}/web
+          docker buildx build --platform linux/amd64 --provenance=false --load \
+            --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} \
+            -f frontend/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE_ID=$(docker inspect "$IMAGE" --format='{{.Id}}')" >> "$GITHUB_ENV"
+
+      - name: Release
+        run: |
+          curl -fsS -X PATCH "https://api.heroku.com/apps/${{ vars.HEROKU_WEB_APP }}/formation" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Accept: application/vnd.heroku+json; version=3.docker-releases" \
+            -H "Content-Type: application/json" \
+            -d "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}"

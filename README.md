@@ -69,4 +69,4 @@ The home page shows **API status: connected** when the frontend can reach the ba
 ## Notes
 
 - Never commit `.env` files; only the `.env.example` templates are tracked.
-- Deployment (Cloudflare Workers via OpenNext for the frontend and Wrangler for the API) will be added as a separate workflow later.
+- Deployment: Heroku (Docker) + Neon Postgres, run manually from the **Deploy to Heroku** workflow. See [DEPLOYMENT.md](DEPLOYMENT.md).

@@ -1,3 +1,4 @@
+import { AwsClient } from 'aws4fetch';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -5,12 +6,29 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 
 /**
- * Image storage. Local-disk driver for development and single-node hosting.
- * TODO(release): swap for Cloudflare R2 (S3 API) behind the same functions; the API only
- * ever hands out URLs produced here, so callers do not change.
+ * Image storage with two drivers behind the same functions:
+ *  - S3-compatible bucket (Cloudflare R2, AWS S3, ...) when S3_BUCKET is set: required on
+ *    Heroku, whose dyno disk is wiped on every deploy and daily restart.
+ *  - Local disk (UPLOAD_DIR, served by app.ts at /uploads) for development.
+ * The API only ever hands out URLs produced here, so callers do not care which one runs.
  */
 export const uploadDir = path.resolve(env.UPLOAD_DIR);
-const publicBase = env.PUBLIC_URL.replace(/\/+$/, '');
+
+const s3 = env.S3_BUCKET
+  ? {
+      client: new AwsClient({
+        accessKeyId: env.S3_ACCESS_KEY_ID!,
+        secretAccessKey: env.S3_SECRET_ACCESS_KEY!,
+        service: 's3',
+        region: env.S3_REGION,
+      }),
+      objectUrl: (key: string) => `${env.S3_ENDPOINT!.replace(/\/+$/, '')}/${env.S3_BUCKET}/${key}`,
+    }
+  : null;
+
+export const storageDriver: 's3' | 'local' = s3 ? 's3' : 'local';
+
+const publicBase = (s3 ? env.S3_PUBLIC_URL! : env.PUBLIC_URL).replace(/\/+$/, '');
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -37,9 +55,21 @@ export function detectImage(b: Buffer): Ext | null {
 export async function saveImage(buffer: Buffer): Promise<{ filename: string; url: string } | null> {
   const ext = detectImage(buffer);
   if (!ext) return null;
-  await mkdir(uploadDir, { recursive: true });
   const filename = `${randomUUID()}.${ext}`;
-  await writeFile(path.join(uploadDir, filename), buffer, { flag: 'wx' });
+  if (s3) {
+    const res = await s3.client.fetch(s3.objectUrl(`uploads/${filename}`), {
+      method: 'PUT',
+      body: new Uint8Array(buffer),
+      headers: {
+        'Content-Type': MIME[ext],
+        'Cache-Control': 'public, max-age=604800, immutable',
+      },
+    });
+    if (!res.ok) throw new Error(`S3 upload failed: ${res.status} ${await res.text()}`);
+  } else {
+    await mkdir(uploadDir, { recursive: true });
+    await writeFile(path.join(uploadDir, filename), buffer, { flag: 'wx' });
+  }
   return { filename, url: `${publicBase}/uploads/${filename}` };
 }
 
@@ -60,14 +90,21 @@ export const uploadUrlSchema = z
   .max(300)
   .refine(isOwnUploadUrl, 'Please add the photo with the upload button.');
 
-/** Reads one of our own uploads from disk (used for AI photo extraction). */
+/** Reads one of our own uploads (used for AI photo extraction). */
 export async function readOwnUpload(
   url: string,
 ): Promise<{ mimeType: string; data: Buffer } | null> {
   const filename = filenameFromUrl(url);
   if (!filename) return null;
   try {
-    const data = await readFile(path.join(uploadDir, filename));
+    let data: Buffer;
+    if (s3) {
+      const res = await s3.client.fetch(s3.objectUrl(`uploads/${filename}`));
+      if (!res.ok) return null;
+      data = Buffer.from(await res.arrayBuffer());
+    } else {
+      data = await readFile(path.join(uploadDir, filename));
+    }
     const ext = filename.split('.')[1] as Ext;
     return { mimeType: MIME[ext], data };
   } catch {

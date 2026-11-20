@@ -4,7 +4,7 @@ import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { corsOrigins, env } from './config/env.js';
-import { uploadDir } from './lib/storage.js';
+import { storageDriver, uploadDir } from './lib/storage.js';
 import { logger } from './lib/logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { apiRouter } from './modules/index.js';
@@ -18,15 +18,17 @@ export function createApp() {
   app.set('trust proxy', env.TRUST_PROXY);
   app.use(helmet());
   // Uploaded photos are public, immutable files that the web app shows from another origin.
-  app.use(
-    '/uploads',
-    (_req, res, next) => {
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      next();
-    },
-    express.static(uploadDir, { dotfiles: 'deny', index: false, maxAge: '7d', immutable: true }),
-  );
+  // (With S3 storage the bucket serves them instead.)
+  if (storageDriver === 'local')
+    app.use(
+      '/uploads',
+      (_req, res, next) => {
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        next();
+      },
+      express.static(uploadDir, { dotfiles: 'deny', index: false, maxAge: '7d', immutable: true }),
+    );
   app.use(cors({ origin: corsOrigins, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
   if (env.NODE_ENV !== 'test') app.use(pinoHttp({ logger }));
