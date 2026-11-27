@@ -76,6 +76,7 @@ export async function runListingMaintenanceJob(
         l.sellerId,
         'LISTING_EXPIRED',
         `"${l.title}" has expired. You can refer it to a compost partner from your dashboard.`,
+        { listingId: l.id },
       );
     }
 
@@ -117,6 +118,7 @@ export async function runListingMaintenanceJob(
             u.id,
             'URGENT_ITEM',
             `Hurry: "${l.title}" expires soon, ${d.toFixed(1)} km away.`,
+            { listingId: l.id },
           );
           sent++;
         }

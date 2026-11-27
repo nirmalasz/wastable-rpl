@@ -2,8 +2,10 @@
  * Database schema, derived from the Chapter 3 class diagrams (Figures 3.3 and 3.4).
  * After editing, run `npm run db:generate -w backend` to create a migration.
  */
+import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   integer,
   numeric,
@@ -61,6 +63,9 @@ export const users = pgTable('users', {
   /** Home location, used to find nearby users for urgent-item reminders (never exposed publicly). */
   homeLat: numeric('home_lat', { precision: 9, scale: 6 }),
   homeLng: numeric('home_lng', { precision: 9, scale: 6 }),
+  /** Version of the Terms & SOP the user agreed to on sign-up (frontend TERMS_VERSION). */
+  termsVersion: text('terms_version'),
+  termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true }),
   ...timestamps,
 });
 
@@ -123,13 +128,34 @@ export const waitlistEntries = pgTable(
 );
 
 /** Trade chat: one thread per transaction, between its buyer and seller. */
+/**
+ * A question thread between a would-be buyer and the seller of a listing, before any claim.
+ * One per listing and buyer; the seller is the listing's seller.
+ */
+export const inquiries = pgTable(
+  'inquiries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    buyerId: uuid('buyer_id')
+      .notNull()
+      .references(() => users.id),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('inquiries_listing_buyer_uq').on(t.listingId, t.buyerId)],
+);
+
+/** Chat messages. Each belongs to exactly one thread: a trade or a pre-claim inquiry. */
 export const messages = pgTable(
   'messages',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    transactionId: uuid('transaction_id')
-      .notNull()
-      .references(() => transactions.id, { onDelete: 'cascade' }),
+    transactionId: uuid('transaction_id').references(() => transactions.id, {
+      onDelete: 'cascade',
+    }),
+    inquiryId: uuid('inquiry_id').references(() => inquiries.id, { onDelete: 'cascade' }),
     senderId: uuid('sender_id')
       .notNull()
       .references(() => users.id),
@@ -138,7 +164,11 @@ export const messages = pgTable(
     /** Set when the other participant has seen it. */
     readAt: timestamp('read_at', { withTimezone: true }),
   },
-  (t) => [index('messages_transaction_created_idx').on(t.transactionId, t.createdAt)],
+  (t) => [
+    index('messages_transaction_created_idx').on(t.transactionId, t.createdAt),
+    index('messages_inquiry_created_idx').on(t.inquiryId, t.createdAt),
+    check('messages_one_thread_ck', sql`num_nonnulls(${t.transactionId}, ${t.inquiryId}) = 1`),
+  ],
 );
 
 /** Listings a user saved to claim later. */
@@ -226,6 +256,12 @@ export const notifications = pgTable('notifications', {
     .references(() => users.id),
   type: text('type').notNull(),
   message: text('message').notNull(),
+  /** What the notification is about, so the app can open it (both optional). */
+  listingId: uuid('listing_id').references(() => listings.id, { onDelete: 'set null' }),
+  transactionId: uuid('transaction_id').references(() => transactions.id, {
+    onDelete: 'set null',
+  }),
+  inquiryId: uuid('inquiry_id').references(() => inquiries.id, { onDelete: 'set null' }),
   channel: notificationChannelEnum('channel').notNull().default('IN_APP'),
   isRead: boolean('is_read').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

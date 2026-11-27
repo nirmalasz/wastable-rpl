@@ -23,24 +23,50 @@ export type NotificationType =
   | 'NEW_REVIEW'
   | 'NEW_MESSAGE';
 
+/** The listing and/or trade a notification is about; the web app opens it on tap. */
+export interface NotificationRef {
+  listingId?: string | null;
+  transactionId?: string | null;
+  /** A pre-claim question thread (see the inquiries table). */
+  inquiryId?: string | null;
+}
+
 /** Creates an in-app notification (FR-11). Pass a transaction handle to make it atomic. */
 export async function notify(
   db: Executor,
   userId: string,
   type: NotificationType,
   message: string,
+  ref: NotificationRef = {},
 ): Promise<void> {
-  await db.insert(notifications).values({ userId, type, message, channel: 'IN_APP' });
+  await db.insert(notifications).values({
+    userId,
+    type,
+    message,
+    channel: 'IN_APP',
+    listingId: ref.listingId ?? null,
+    transactionId: ref.transactionId ?? null,
+    inquiryId: ref.inquiryId ?? null,
+  });
 }
 
 export async function notifyAdmins(
   db: Executor,
   type: NotificationType,
   message: string,
+  ref: NotificationRef = {},
 ): Promise<void> {
   const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, 'ADMIN'));
   if (admins.length === 0) return;
-  await db
-    .insert(notifications)
-    .values(admins.map((a) => ({ userId: a.id, type, message, channel: 'IN_APP' as const })));
+  await db.insert(notifications).values(
+    admins.map((a) => ({
+      userId: a.id,
+      type,
+      message,
+      channel: 'IN_APP' as const,
+      listingId: ref.listingId ?? null,
+      transactionId: ref.transactionId ?? null,
+      inquiryId: ref.inquiryId ?? null,
+    })),
+  );
 }

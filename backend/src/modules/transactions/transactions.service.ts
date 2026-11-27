@@ -37,7 +37,10 @@ export async function cancelTransaction(
       .where(eq(listings.id, listing.id));
   }
   for (const userId of notifyUserIds) {
-    await notify(tx, userId, 'CLAIM_CANCELLED', message);
+    await notify(tx, userId, 'CLAIM_CANCELLED', message, {
+      listingId: listing.id,
+      transactionId: found.id,
+    });
   }
 
   const [first] = await tx
@@ -52,6 +55,7 @@ export async function cancelTransaction(
       first.userId,
       'ITEM_AVAILABLE',
       `"${listing.title}" is available again. Claim it now!`,
+      { listingId: listing.id },
     );
     await tx.delete(waitlistEntries).where(eq(waitlistEntries.id, first.id));
     await tx

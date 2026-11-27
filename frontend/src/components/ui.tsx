@@ -1,3 +1,4 @@
+import { RecycleIcon } from './icons';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -8,7 +9,7 @@ import type {
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ');
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'brand' | 'secondary' | 'danger';
+  variant?: 'primary' | 'brand' | 'soft' | 'secondary' | 'danger';
 };
 
 export function Button({ variant = 'primary', className, ...props }: ButtonProps) {
@@ -20,6 +21,8 @@ export function Button({ variant = 'primary', className, ...props }: ButtonProps
         variant === 'primary' &&
           'bg-accent font-bold italic text-black shadow-button hover:brightness-95',
         variant === 'brand' && 'bg-brand-500 text-white shadow-button hover:bg-brand-700',
+        variant === 'soft' &&
+          'bg-brand-300 font-medium italic text-black shadow-button hover:brightness-95',
         variant === 'secondary' && 'bg-cream text-ink hover:bg-sand',
         variant === 'danger' && 'bg-danger text-white hover:brightness-110',
         className,
@@ -109,7 +112,60 @@ export const Card = ({ children, className }: { children: ReactNode; className?:
   <div className={cx('rounded-[20px] bg-white p-5 shadow-card', className)}>{children}</div>
 );
 
-/** Page-level guard: asks anonymous visitors to log in. */
+/**
+ * Loading indicators: a spinning recycle mark in brand green. Users who asked their device
+ * for reduced motion see it standing still.
+ */
+function Spinner({ size }: { size: number }) {
+  return (
+    <RecycleIcon
+      size={size}
+      className="shrink-0 text-brand-500 animate-[spin_1.6s_linear_infinite] motion-reduce:animate-none"
+    />
+  );
+}
+
+/** Small inline "working" line, for places too small for a block (buttons, chat, guards). */
 export function Loading({ children = 'Loading…' }: { children?: ReactNode }) {
-  return <p className="text-sm text-muted">{children}</p>;
+  return (
+    <p role="status" className="flex items-center gap-2 text-sm text-muted">
+      <Spinner size={20} />
+      {children}
+    </p>
+  );
+}
+
+/**
+ * Centered recycle spinner that holds the space of the content it replaces (a listing grid,
+ * a list of rows, a whole page) so the layout does not jump when the data arrives.
+ */
+export function LoadingBlock({
+  label = 'Loading…',
+  className,
+}: {
+  label?: string;
+  /** Height of the reserved space, e.g. "min-h-64". */
+  className?: string;
+}) {
+  return (
+    <div
+      role="status"
+      className={cx('flex flex-col items-center justify-center gap-3 py-10', className)}
+    >
+      <Spinner size={48} />
+      <span className="text-sm text-muted">{label}</span>
+    </div>
+  );
+}
+
+export const listingGrid = 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
+
+/** Friendly "nothing here" card with an optional action underneath. */
+export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="rounded-[20px] bg-white p-8 text-center shadow-card">
+      <p className="text-lg text-ink">{title}</p>
+      {children && <div className="mt-2 space-y-3 text-sm text-muted">{children}</div>}
+    </div>
+  );
 }

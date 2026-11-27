@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { Alert, Loading } from '@/components/ui';
+import { Alert, LoadingBlock } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { api } from '@/lib/api-client';
 import { useEffect, useState } from 'react';
@@ -24,7 +24,7 @@ function VerifyEmail() {
   }, [token, refreshUser]);
 
   if (!token) return <Alert>This verification link is missing its token.</Alert>;
-  if (state === 'working') return <Loading>Verifying…</Loading>;
+  if (state === 'working') return <LoadingBlock label="Verifying…" className="min-h-[40vh]" />;
   if (state === 'done') {
     return (
       <Alert kind="success">
@@ -40,7 +40,7 @@ function VerifyEmail() {
 
 export default function VerifyPage() {
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<LoadingBlock className="min-h-[40vh]" />}>
       <VerifyEmail />
     </Suspense>
   );

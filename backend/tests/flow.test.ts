@@ -27,7 +27,7 @@ async function signUp(name: string) {
   const email = `${name}.${run}@test.dev`;
   const reg = await request(app)
     .post('/api/auth/register')
-    .send({ name, email, password: 'password123' });
+    .send({ name, email, password: 'password123', acceptedTermsVersion: 'test' });
   expect(reg.status).toBe(201);
   const ver = await request(app)
     .post('/api/auth/verify-email')
@@ -104,17 +104,20 @@ describe.skipIf(!dbUp)('marketplace flow', () => {
     const wl = await post(`/api/listings/${id}/waitlist`, waiter.token);
     expect(wl.body.entry.position).toBe(1);
 
-    const notes = await request(app).get('/api/notifications').set(bearer(seller.token));
-    expect(notes.body.notifications.some((n: { type: string }) => n.type === 'CLAIM_REQUEST')).toBe(
-      true,
-    );
-
     const trxId = claim.body.transaction.id as string;
-    expect(
-      (await patch(`/api/transactions/${trxId}`, seller.token, { status: 'COMPLETED' })).status,
-    ).toBe(403);
+    const notes = await request(app).get('/api/notifications').set(bearer(seller.token));
+    // The notification says which listing and trade it is about, so the app can open them.
+    const request_ = notes.body.notifications.find(
+      (n: { type: string }) => n.type === 'CLAIM_REQUEST',
+    );
+    expect(request_).toMatchObject({ listingId: id, transactionId: trxId });
+
     const done = await patch(`/api/transactions/${trxId}`, buyer.token, { status: 'COMPLETED' });
     expect(done.body.listingStatus).toBe('COMPLETED');
+    const sellerNotes = await request(app).get('/api/notifications').set(bearer(seller.token));
+    expect(
+      sellerNotes.body.notifications.find((n: { type: string }) => n.type === 'PICKUP_COMPLETED'),
+    ).toMatchObject({ listingId: id, transactionId: trxId });
     const review = await post(`/api/transactions/${trxId}/reviews`, buyer.token, {
       rating: 5,
       comment: 'Fresh',

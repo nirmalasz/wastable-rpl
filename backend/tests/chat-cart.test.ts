@@ -29,7 +29,7 @@ async function signUp(name: string) {
   const email = `${name}.${run}@test.dev`;
   const reg = await request(app)
     .post('/api/auth/register')
-    .send({ name, email, password: 'password123' });
+    .send({ name, email, password: 'password123', acceptedTermsVersion: 'test' });
   await request(app).post('/api/auth/verify-email').send({ token: reg.body.devVerificationToken });
   return { token: reg.body.token as string, id: reg.body.user.id as string };
 }
@@ -184,7 +184,12 @@ describe.skipIf(!dbUp)('endpoints the flow tests skip', () => {
   it('resends verification only to unverified accounts', async () => {
     const reg = await request(app)
       .post('/api/auth/register')
-      .send({ name: 'resend', email: `resend.${run}@test.dev`, password: 'password123' });
+      .send({
+        name: 'resend',
+        email: `resend.${run}@test.dev`,
+        password: 'password123',
+        acceptedTermsVersion: 'test',
+      });
     const again = await post('/api/auth/resend-verification', reg.body.token);
     expect(again.status).toBe(200);
     expect(again.body.devVerificationToken).toBeTypeOf('string');

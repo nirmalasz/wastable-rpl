@@ -76,7 +76,9 @@ moderationRouter.post(
           })
           .returning();
         if (!current) throw new Error('case insert failed');
-        await notifyAdmins(tx, 'NEW_CASE', `Listing "${listing.title}" was reported: ${reason}`);
+        await notifyAdmins(tx, 'NEW_CASE', `Listing "${listing.title}" was reported: ${reason}`, {
+          listingId: listing.id,
+        });
       }
       await tx
         .insert(reports)
@@ -91,6 +93,7 @@ moderationRouter.post(
           listing.sellerId,
           'LISTING_HIDDEN',
           `"${listing.title}" is hidden while an admin reviews a report.`,
+          { listingId: listing.id },
         );
       }
       return current;
@@ -198,6 +201,7 @@ moderationRouter.patch('/moderation/cases/:id', ...admin, async (req, res) => {
           listing.sellerId,
           'LISTING_RESTORED',
           `"${listing.title}" passed review and is live again.`,
+          { listingId: listing.id },
         );
       }
       for (const r of new Set(reporters.map((x) => x.userId))) {
@@ -206,6 +210,7 @@ moderationRouter.patch('/moderation/cases/:id', ...admin, async (req, res) => {
           r,
           'REPORT_DISMISSED',
           `Your report on "${listing.title}" was reviewed and dismissed.`,
+          { listingId: listing.id },
         );
       }
       return { status: 'DISMISSED' as const, suspended: false };
@@ -223,6 +228,7 @@ moderationRouter.patch('/moderation/cases/:id', ...admin, async (req, res) => {
         c.claimerId,
         'CLAIM_CANCELLED',
         `"${listing.title}" was removed by a moderator.`,
+        { listingId: listing.id },
       );
     }
     await tx
@@ -234,6 +240,7 @@ moderationRouter.patch('/moderation/cases/:id', ...admin, async (req, res) => {
       listing.sellerId,
       'LISTING_REMOVED',
       `"${listing.title}" was removed for violating the rules.`,
+      { listingId: listing.id },
     );
     for (const r of new Set(reporters.map((x) => x.userId))) {
       await notify(

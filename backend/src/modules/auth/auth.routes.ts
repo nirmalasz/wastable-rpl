@@ -46,12 +46,19 @@ export function toPublicUser(u: UserRow) {
     avatarUrl: u.avatarUrl,
     homeLat: u.homeLat === null ? null : Number(u.homeLat),
     homeLng: u.homeLng === null ? null : Number(u.homeLng),
+    termsVersion: u.termsVersion,
     createdAt: u.createdAt,
   };
 }
 
 const email = z.string().trim().toLowerCase().pipe(z.email().max(254));
 const password = z.string().min(8, 'Password must be at least 8 characters').max(128);
+/** The Terms & SOP version ticked on the sign-up form; stored as proof of consent. */
+const acceptedTermsVersion = z
+  .string('Please read and agree to the Terms & SOP.')
+  .trim()
+  .min(1, 'Please read and agree to the Terms & SOP.')
+  .max(40);
 
 /** The fingerprint ties a token to the current password, so a reset signs out old sessions. */
 const accessToken = (u: Pick<UserRow, 'id' | 'passwordHash'>) =>
@@ -67,7 +74,7 @@ const resetFingerprint = (passwordHash: string) => sha256(passwordHash).slice(0,
 
 authRouter.post('/auth/register', authLimiter, async (req, res) => {
   const body = z
-    .object({ name: z.string().trim().min(1).max(80), email, password })
+    .object({ name: z.string().trim().min(1).max(80), email, password, acceptedTermsVersion })
     .parse(req.body);
   const db = getDb();
   const [existing] = await db
@@ -82,6 +89,8 @@ authRouter.post('/auth/register', authLimiter, async (req, res) => {
       name: body.name,
       email: body.email,
       passwordHash: await hashPassword(body.password),
+      termsVersion: body.acceptedTermsVersion,
+      termsAcceptedAt: new Date(),
       // With verification off there is no email step, so the account is usable right away.
       ...(verificationOn ? {} : { status: 'ACTIVE' as const }),
     })

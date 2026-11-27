@@ -8,11 +8,13 @@ import type { ChatMessage } from '@/lib/types';
 const POLL_MS = 5000;
 
 /**
- * One trade's chat thread, backed by /transactions/:id/messages. Loads the history, then
- * polls with ?after= for new messages while mounted. Sending appends the saved message.
- * Mount it once per thread (key the component by transaction id) so state starts fresh.
+ * One chat thread. `messagesPath` is the thread's messages endpoint: a trade's
+ * (/transactions/:id/messages) or a pre-claim inquiry's (/inquiries/:id/messages).
+ * Loads the history, then polls with ?after= for new messages while mounted. Sending appends
+ * the saved message. Mount it once per thread (key the component by thread) so state starts
+ * fresh.
  */
-export function useChatThread(transactionId: string, onActivity?: () => void) {
+export function useChatThread(messagesPath: string, onActivity?: () => void) {
   const { call } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -40,9 +42,7 @@ export function useChatThread(transactionId: string, onActivity?: () => void) {
     async function poll() {
       const after = latest.current ? `?after=${encodeURIComponent(latest.current)}` : '';
       try {
-        const res = await call<{ messages: ChatMessage[] }>(
-          `/transactions/${transactionId}/messages${after}`,
-        );
+        const res = await call<{ messages: ChatMessage[] }>(`${messagesPath}${after}`);
         if (cancelled) return;
         merge(res.messages);
         setLoaded(true);
@@ -61,16 +61,14 @@ export function useChatThread(transactionId: string, onActivity?: () => void) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [transactionId, call, merge]);
+  }, [messagesPath, call, merge]);
 
   const send = useCallback(
     async (text: string) => {
-      const res = await call<{ message: ChatMessage }>(`/transactions/${transactionId}/messages`, {
-        body: { text },
-      });
+      const res = await call<{ message: ChatMessage }>(messagesPath, { body: { text } });
       merge([res.message]);
     },
-    [call, transactionId, merge],
+    [call, messagesPath, merge],
   );
 
   return { messages, loaded, error, send };

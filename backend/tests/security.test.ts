@@ -31,7 +31,7 @@ async function signUp(name: string) {
   const email = `${name}.${run}@test.dev`;
   const reg = await request(app)
     .post('/api/auth/register')
-    .send({ name, email, password: 'password123' });
+    .send({ name, email, password: 'password123', acceptedTermsVersion: 'test' });
   expect(reg.status).toBe(201);
   const ver = await request(app)
     .post('/api/auth/verify-email')

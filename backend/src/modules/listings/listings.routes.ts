@@ -136,7 +136,9 @@ listingsRouter.post('/listings', ...writer, async (req, res) => {
         aiFlags: moderation.dietFlags,
         aiRationale: moderation.rationale ?? null,
       });
-      await notifyAdmins(tx, 'NEW_CASE', `Listing "${row.title}" needs moderation review.`);
+      await notifyAdmins(tx, 'NEW_CASE', `Listing "${row.title}" needs moderation review.`, {
+        listingId: row.id,
+      });
     }
     return row;
   });
@@ -365,7 +367,9 @@ listingsRouter.patch('/listings/:id', ...writer, async (req, res) => {
         aiFlags: moderation.dietFlags,
         aiRationale: moderation.rationale ?? null,
       });
-      await notifyAdmins(tx, 'NEW_CASE', `Edited listing "${row.title}" needs moderation review.`);
+      await notifyAdmins(tx, 'NEW_CASE', `Edited listing "${row.title}" needs moderation review.`, {
+        listingId: row.id,
+      });
     }
     return row;
   });
@@ -416,6 +420,7 @@ listingsRouter.post(
         existing.sellerId,
         'LISTING_EXPIRED',
         `"${existing.title}" was referred to ${partner.name} for composting.`,
+        { listingId: existing.id },
       );
       return row;
     });

@@ -207,11 +207,14 @@ export function ReviewForm({
   role,
   counterpartName,
   onDone,
+  flat = false,
 }: {
   transactionId: string;
   role: 'BUYER' | 'SELLER';
   counterpartName: string;
   onDone: () => void;
+  /** Drop the card background and shadow, for use inside a dialog that already has them. */
+  flat?: boolean;
 }) {
   const { call } = useAuth();
   const [rating, setRating] = useState(0);
@@ -239,7 +242,10 @@ export function ReviewForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2 rounded-[14px] bg-white p-4 shadow-card">
+    <form
+      onSubmit={submit}
+      className={flat ? 'space-y-3' : 'space-y-2 rounded-[14px] bg-white p-4 shadow-card'}
+    >
       <p className="text-sm font-medium text-ink">
         Rate the {other}, {counterpartName}
       </p>

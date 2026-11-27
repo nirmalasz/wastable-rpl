@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, type FormEvent } from 'react';
-import { Alert, Button, Card, Field, Input, Loading } from '@/components/ui';
+import { Alert, Button, Card, Field, Input, LoadingBlock } from '@/components/ui';
 import { api } from '@/lib/api-client';
 
 function ResetForm() {
@@ -87,7 +87,7 @@ function ResetForm() {
 
 export default function ResetPage() {
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<LoadingBlock className="min-h-[40vh]" />}>
       <ResetForm />
     </Suspense>
   );

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
-import { Alert, Loading } from '@/components/ui';
+import { Alert, LoadingBlock } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { ListingCard } from '@/features/listings/listing-card';
 import { ListingGrid, ProfileHeader, ProfileTabs, type ProfileTab } from '@/features/profile';
@@ -20,7 +20,7 @@ export default function UserProfilePage() {
   const [tab, setTab] = useState<ProfileTab>('listing');
 
   if (profile.error) return <Alert>{profile.error}</Alert>;
-  if (!profile.data) return <Loading />;
+  if (!profile.data) return <LoadingBlock className="min-h-[60vh]" />;
 
   const { user, listings } = profile.data;
   const isMe = me?.id === user.id;
@@ -68,7 +68,7 @@ export default function UserProfilePage() {
         ) : reviews.data ? (
           <RatingPanel summary={reviews.data} />
         ) : (
-          <Loading />
+          <LoadingBlock className="min-h-64" />
         )}
       </div>
     </div>

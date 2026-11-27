@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { FoodSafetyDisclaimer } from '@/components/food-safety-disclaimer';
 import { Avatar } from '@/components/avatar';
-import { Alert, Badge, Button, Field, Input, Loading } from '@/components/ui';
+import { ChatIcon } from '@/components/icons';
+import { Alert, Badge, Button, Field, Input, LoadingBlock, listingGrid } from '@/components/ui';
 import { useAuth } from '@/features/auth';
+import { isSuitableFlag } from '@/features/listings/diet-badges';
 import { ListingCard, priceLabel } from '@/features/listings/listing-card';
 import { Stars } from '@/features/reviews';
 import { formatDateTime, humanize, timeLeft } from '@/lib/format';
@@ -27,7 +29,7 @@ function SimilarListings({ listing }: { listing: Listing }) {
   return (
     <section className="space-y-4">
       <h2 className="text-4xl text-black sm:text-[52px] sm:leading-tight">Similar Listings</h2>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className={listingGrid}>
         {others.map((l) => (
           <ListingCard key={l.id} listing={l} />
         ))}
@@ -35,6 +37,9 @@ function SimilarListings({ listing }: { listing: Listing }) {
     </section>
   );
 }
+
+const chatButton =
+  'flex h-14 w-full items-center justify-center gap-2 rounded-[20px] border-2 border-brand-500 bg-white text-lg font-medium text-brand-700 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60';
 
 export default function ListingPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,6 +49,23 @@ export default function ListingPage() {
   const [busy, setBusy] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const router = useRouter();
+
+  /** Opens the question thread with the seller and goes to it. */
+  async function ask() {
+    setAsking(true);
+    setNotice(undefined);
+    try {
+      const res = await call<{ inquiry: { id: string } }>(`/listings/${id}/inquiry`, {
+        method: 'POST',
+      });
+      router.push(`/chat?ask=${res.inquiry.id}`);
+    } catch (err) {
+      setNotice({ kind: 'error', text: (err as Error).message });
+      setAsking(false);
+    }
+  }
 
   async function act(path: string, success: string) {
     setBusy(true);
@@ -89,7 +111,7 @@ export default function ListingPage() {
   }
 
   if (detail.error) return <Alert>{detail.error}</Alert>;
-  if (!detail.data) return <Loading />;
+  if (!detail.data) return <LoadingBlock label="Loading listing…" className="min-h-[60vh]" />;
 
   const {
     listing: l,
@@ -175,6 +197,35 @@ export default function ListingPage() {
             <p className="text-center text-xs text-muted">Verify your email to claim items.</p>
           )}
 
+          {/*
+            Chat with the seller. After a claim it opens the trade chat; before that it opens
+            (or reopens) a question thread with the seller (POST /listings/:id/inquiry).
+          */}
+          {!isOwner &&
+            (myTransaction ? (
+              <Link href={`/chat?with=${myTransaction.id}`} className={chatButton}>
+                <ChatIcon size={22} />
+                Chat with seller
+              </Link>
+            ) : !user ? (
+              <Link href="/login" className={chatButton}>
+                <ChatIcon size={22} />
+                Log in to chat with seller
+              </Link>
+            ) : (
+              (l.status === 'AVAILABLE' || l.status === 'PENDING') && (
+                <button
+                  type="button"
+                  className={chatButton}
+                  disabled={asking || !user.isVerified}
+                  onClick={ask}
+                >
+                  <ChatIcon size={22} />
+                  {asking ? 'Opening chat…' : 'Chat with seller'}
+                </button>
+              )
+            ))}
+
           <Link
             href={`/users/${l.sellerId}`}
             className="block space-y-4 rounded-[20px] bg-brand-300 p-6 transition hover:brightness-95"
@@ -226,11 +277,17 @@ export default function ListingPage() {
             </Badge>
             {l.isUrgent && <Badge tone="urgent">Urgent</Badge>}
             <Badge>{humanize(l.category)}</Badge>
-            {l.dietFlags.map((f) => (
-              <Badge key={f} tone="danger">
-                contains {f}
-              </Badge>
-            ))}
+            {l.dietFlags.map((f) =>
+              isSuitableFlag(f) ? (
+                <Badge key={f} tone="brand">
+                  {humanize(f)}
+                </Badge>
+              ) : (
+                <Badge key={f} tone="danger">
+                  contains {humanize(f)}
+                </Badge>
+              ),
+            )}
           </div>
 
           <p className="rounded-[20px] bg-expiry px-6 py-4 text-center text-xl font-light text-black sm:text-2xl">

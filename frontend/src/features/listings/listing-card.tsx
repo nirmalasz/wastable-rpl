@@ -8,6 +8,7 @@ import { useAuth } from '@/features/auth';
 import { useCart } from '@/features/cart';
 import { rupiah, timeLeft } from '@/lib/format';
 import type { Listing } from '@/lib/types';
+import { DietBadges } from './diet-badges';
 
 export function priceLabel(l: Pick<Listing, 'listingType' | 'price'>) {
   if (l.listingType === 'FREE') return 'Free';
@@ -70,15 +71,7 @@ export function ListingCard({
           {l.quantity} available · {l.pickupArea}
           {l.distanceKm != null && ` · ${l.distanceKm} km`}
         </p>
-        {l.dietFlags.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {l.dietFlags.map((f) => (
-              <Badge key={f} tone="danger">
-                contains {f}
-              </Badge>
-            ))}
-          </div>
-        )}
+        <DietBadges flags={l.dietFlags} className="mt-1" />
       </Link>
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-muted">
