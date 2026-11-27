@@ -11,8 +11,9 @@ const schema = z.object({
 
 /**
  * Moderation Agent (FR-12, FR-16): flags diet ingredients and prohibited items.
- * Deterministic rules run first (a prohibited keyword is always rejected). The LLM then
- * looks for subtler problems and can answer UNCERTAIN, which goes to an admin.
+ * Deterministic rules run first (a prohibited keyword is always rejected; a spoilage or
+ * not-food keyword always reaches an admin). The LLM then looks for subtler problems and can
+ * answer UNCERTAIN, which goes to an admin.
  * If the AI model is unavailable the rule-based result stands (Reliability NFR).
  */
 export async function moderateListing(text: string, userId: string): Promise<ModerationResult> {
@@ -37,8 +38,19 @@ export async function moderateListing(text: string, userId: string): Promise<Mod
     const dietFlags = [
       ...new Set([...rules.dietFlags, ...data.dietFlags.map((f) => f.toLowerCase())]),
     ];
-    const verdict = data.verdict === 'OK' && dietFlags.length > 0 ? 'DIET_FLAG' : data.verdict;
-    return { verdict, dietFlags, matched: rules.matched, source: 'AI', rationale: data.rationale };
+    // A spoilage / not-food keyword sends the listing to an admin unless the model goes further
+    // and rejects it: the model can confirm the rules' worry, but not wave it away.
+    const keepReview =
+      rules.verdict === 'UNCERTAIN' && (data.verdict === 'OK' || data.verdict === 'DIET_FLAG');
+    const verdict = keepReview
+      ? 'UNCERTAIN'
+      : data.verdict === 'OK' && dietFlags.length > 0
+        ? 'DIET_FLAG'
+        : data.verdict;
+    const rationale = keepReview
+      ? [rules.rationale, data.rationale].filter(Boolean).join(' · ')
+      : data.rationale;
+    return { verdict, dietFlags, matched: rules.matched, source: 'AI', rationale };
   } catch (err) {
     if (err instanceof AiUnavailableError) return rules;
     throw err;

@@ -98,4 +98,19 @@ describe('agent fallbacks when the model is unusable', () => {
     const res = await moderateListing(`Roti tawar gandum ${++n}`, `user-${n}`);
     expect(res).toMatchObject({ source: 'AI', verdict: 'DIET_FLAG', dietFlags: ['gluten'] });
   });
+
+  it('moderation keeps a spoilage keyword in review even if the model says OK', async () => {
+    callModel.mockResolvedValueOnce('{"verdict":"OK","dietFlags":[],"rationale":"looks fine"}');
+    const res = await moderateListing(`Nasi kotak agak basi ${++n}`, `user-${n}`);
+    expect(res).toMatchObject({ source: 'AI', verdict: 'UNCERTAIN' });
+    expect(res.rationale).toContain('possible spoilage');
+  });
+
+  it('moderation still lets the model reject a spoilage keyword outright', async () => {
+    callModel.mockResolvedValueOnce(
+      '{"verdict":"PROHIBITED","dietFlags":[],"rationale":"spoiled"}',
+    );
+    const res = await moderateListing(`Roti berjamur ${++n}`, `user-${n}`);
+    expect(res.verdict).toBe('PROHIBITED');
+  });
 });
