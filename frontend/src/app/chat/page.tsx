@@ -2,15 +2,15 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Avatar } from '@/components/avatar';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert, Badge, Loading } from '@/components/ui';
+import { Alert, Badge, LoadingBlock } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { chatTime, useChatThread } from '@/features/chat';
 import { ReviewForm } from '@/features/reviews';
 import { humanize } from '@/lib/format';
-import type { ChatMessage, Transaction } from '@/lib/types';
+import type { ChatMessage, Inquiry, Transaction } from '@/lib/types';
 import { useApi } from '@/lib/use-api';
 
 /* eslint-disable @next/next/no-img-element -- static icon SVGs exported from Figma */
@@ -22,13 +22,72 @@ const QUICK_REPLIES = [
   'Thanks, see you soon!',
 ];
 
+/**
+ * One conversation, whichever kind: a trade (after a claim) or a question asked before
+ * claiming. Trades open with ?with=<transactionId>, questions with ?ask=<inquiryId>.
+ */
+interface ChatThread {
+  kind: 'trade' | 'inquiry';
+  id: string;
+  /** Query string that opens this thread. */
+  param: string;
+  messagesPath: string;
+  role: 'BUYER' | 'SELLER';
+  counterpart: { id: string; name: string; avatarUrl: string | null };
+  listingId: string;
+  listingTitle: string;
+  unreadCount: number;
+  lastMessage: Transaction['lastMessage'];
+  createdAt: string;
+  /** Why no new messages can be sent, or null. */
+  closedReason: string | null;
+  trade?: Transaction;
+}
+
+const fromTrade = (t: Transaction): ChatThread => ({
+  kind: 'trade',
+  id: t.id,
+  param: `with=${t.id}`,
+  messagesPath: `/transactions/${t.id}/messages`,
+  role: t.role,
+  counterpart: t.counterpart,
+  listingId: t.listingId,
+  listingTitle: t.listingTitle,
+  unreadCount: t.unreadCount,
+  lastMessage: t.lastMessage,
+  createdAt: t.createdAt,
+  closedReason:
+    t.status === 'CANCELLED' ? 'This trade was cancelled, so the chat is closed.' : null,
+  trade: t,
+});
+
+const fromInquiry = (q: Inquiry): ChatThread => ({
+  kind: 'inquiry',
+  id: q.id,
+  param: `ask=${q.id}`,
+  messagesPath: `/inquiries/${q.id}/messages`,
+  role: q.role,
+  counterpart: q.counterpart,
+  listingId: q.listingId,
+  listingTitle: q.listingTitle,
+  unreadCount: q.unreadCount,
+  lastMessage: q.lastMessage,
+  createdAt: q.createdAt,
+  closedReason:
+    q.listingStatus === 'REMOVED' || q.listingStatus === 'UNDER_REVIEW'
+      ? 'This listing is no longer shown, so the chat is closed.'
+      : null,
+});
+
+const lastActivity = (t: ChatThread) => new Date(t.lastMessage?.createdAt ?? t.createdAt).getTime();
+
 /** One conversation row: avatar, bold-italic name, preview, time on the right. */
 function ThreadRow({
-  trx,
+  thread: trx,
   active,
   onSelect,
 }: {
-  trx: Transaction;
+  thread: ChatThread;
   active: boolean;
   onSelect: () => void;
 }) {
@@ -47,8 +106,11 @@ function ThreadRow({
       >
         <Avatar url={trx.counterpart.avatarUrl} name={trx.counterpart.name} size={48} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-base font-bold italic text-ink">
-            {trx.counterpart.name}
+          <span className="flex items-center gap-2">
+            <span className="truncate text-base font-bold italic text-ink">
+              {trx.counterpart.name}
+            </span>
+            {trx.kind === 'inquiry' && <Badge>Question</Badge>}
           </span>
           <span className="block truncate text-sm text-ink">
             {last ? `${last.mine ? 'You: ' : ''}${last.body}` : trx.listingTitle}
@@ -95,18 +157,20 @@ function Bubble({ m }: { m: ChatMessage }) {
 }
 
 function Thread({
-  trx,
+  thread,
   onBack,
   onReviewed,
   onActivity,
 }: {
-  trx: Transaction;
+  thread: ChatThread;
   onBack: () => void;
   onReviewed: () => void;
   /** Called when messages arrive or are sent, so the list can refresh its previews. */
   onActivity: () => void;
 }) {
-  const { messages, loaded, error, send } = useChatThread(trx.id, onActivity);
+  const trx = thread;
+  const trade = thread.trade;
+  const { messages, loaded, error, send } = useChatThread(thread.messagesPath, onActivity);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
   const [text, setText] = useState('');
@@ -116,7 +180,7 @@ function Thread({
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
-  }, [messages.length, trx.id]);
+  }, [messages.length, thread.param]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -133,7 +197,7 @@ function Thread({
       setSending(false);
     }
   }
-  const closed = trx.status === 'CANCELLED';
+  const closed = Boolean(thread.closedReason);
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[17px] bg-brand-50 shadow-card">
@@ -156,8 +220,10 @@ function Thread({
             <h2 className="truncate font-sans text-base font-bold italic text-ink">
               {trx.counterpart.name}
             </h2>
-            <span className="block text-xs text-muted">
-              {trx.role === 'BUYER' ? 'Seller' : 'Buyer'} · view profile
+            <span className="block truncate text-xs text-muted">
+              {thread.kind === 'inquiry'
+                ? `${trx.role === 'BUYER' ? 'Seller' : 'Asking'} · about ${trx.listingTitle}`
+                : `${trx.role === 'BUYER' ? 'Seller' : 'Buyer'} · view profile`}
             </span>
           </span>
         </Link>
@@ -165,7 +231,7 @@ function Thread({
           type="button"
           onClick={() => setShowInfo((s) => !s)}
           aria-expanded={showInfo}
-          aria-label="Trade details"
+          aria-label={thread.kind === 'trade' ? 'Trade details' : 'Listing details'}
           className="flex gap-1 rounded-full p-2 hover:bg-cream"
         >
           <img src="/icons/dot.svg" alt="" width={8} height={8} />
@@ -180,15 +246,25 @@ function Thread({
             >
               {trx.listingTitle}
             </Link>
-            <p>
-              <Badge tone={trx.status === 'COMPLETED' ? 'brand' : 'neutral'}>
-                {humanize(trx.status)}
-              </Badge>{' '}
-              · you are the {trx.role === 'BUYER' ? 'buyer' : 'seller'}
-            </p>
-            <p className="text-muted">Pickup: {trx.pickupArea}</p>
-            {trx.counterpart.contact && (
-              <p className="text-muted">Contact: {trx.counterpart.contact}</p>
+            {trade ? (
+              <>
+                <p>
+                  <Badge tone={trade.status === 'COMPLETED' ? 'brand' : 'neutral'}>
+                    {humanize(trade.status)}
+                  </Badge>{' '}
+                  · you are the {trade.role === 'BUYER' ? 'buyer' : 'seller'}
+                </p>
+                <p className="text-muted">Pickup: {trade.pickupArea}</p>
+                {trade.counterpart.contact && (
+                  <p className="text-muted">Contact: {trade.counterpart.contact}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-muted">
+                {trx.role === 'BUYER'
+                  ? 'Not claimed yet. Claim it from the listing page when you are ready.'
+                  : 'A question before claiming. Contact details are shared once they claim.'}
+              </p>
             )}
             <Link
               href={`/users/${trx.counterpart.id}`}
@@ -196,19 +272,30 @@ function Thread({
             >
               {trx.counterpart.name}&apos;s listings and ratings
             </Link>
-            <Link href="/dashboard" className="block text-brand-700 underline">
-              Manage in dashboard
-            </Link>
+            {trade && (
+              <Link href="/dashboard" className="block text-brand-700 underline">
+                Manage in dashboard
+              </Link>
+            )}
           </div>
         )}
       </header>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        {!loaded && !error && <p className="text-center text-sm text-muted">Loading…</p>}
+        {!loaded && !error && <LoadingBlock label="Loading messages…" />}
         {error && <p className="text-center text-sm text-danger">{error}</p>}
         {loaded && messages.length === 0 && (
           <p className="mx-auto max-w-sm rounded-[10px] bg-white/70 px-4 py-3 text-center text-sm text-ink">
-            Say hi to arrange pickup for <strong>{trx.listingTitle}</strong>.
+            {thread.kind === 'inquiry' ? (
+              <>
+                Ask the seller anything about <strong>{trx.listingTitle}</strong> before you claim
+                it.
+              </>
+            ) : (
+              <>
+                Say hi to arrange pickup for <strong>{trx.listingTitle}</strong>.
+              </>
+            )}
           </p>
         )}
         {messages.map((m) => (
@@ -217,17 +304,17 @@ function Thread({
         <div ref={bottom} />
       </div>
 
-      {trx.status === 'COMPLETED' && (
+      {trade?.status === 'COMPLETED' && (
         <div className="px-4 pb-2">
-          {trx.reviewedByMe ? (
+          {trade.reviewedByMe ? (
             <p className="text-center text-xs text-brand-700">
-              Trade completed · you reviewed this {trx.role === 'BUYER' ? 'seller' : 'buyer'}.
+              Trade completed · you reviewed this {trade.role === 'BUYER' ? 'seller' : 'buyer'}.
             </p>
           ) : (
             <ReviewForm
-              transactionId={trx.id}
-              role={trx.role}
-              counterpartName={trx.counterpart.name}
+              transactionId={trade.id}
+              role={trade.role}
+              counterpartName={trade.counterpart.name}
               onDone={onReviewed}
             />
           )}
@@ -237,7 +324,7 @@ function Thread({
       <div className="relative px-4 pb-4">
         {closed && (
           <p className="rounded-[16px] bg-white/80 px-4 py-3 text-center text-sm text-muted">
-            This trade was cancelled, so the chat is closed.
+            {thread.closedReason}
           </p>
         )}
         {sendError && <p className="mb-2 text-center text-xs text-danger">{sendError}</p>}
@@ -313,8 +400,14 @@ function Chat() {
   const router = useRouter();
   const params = useSearchParams();
   const trx = useApi<{ transactions: Transaction[] }>('/transactions/mine', token);
+  const asks = useApi<{ inquiries: Inquiry[] }>('/inquiries/mine', token);
   const [query, setQuery] = useState('');
-  const reloadList = trx.reload;
+  const reloadTrades = trx.reload;
+  const reloadAsks = asks.reload;
+  const reloadList = useCallback(() => {
+    reloadTrades();
+    reloadAsks();
+  }, [reloadTrades, reloadAsks]);
 
   // Refresh previews and unread badges for the other conversations.
   useEffect(() => {
@@ -323,12 +416,20 @@ function Chat() {
     }, 15_000);
     return () => clearInterval(timer);
   }, [reloadList]);
-  const activeId = params.get('with');
+  const activeParam = params.get('with')
+    ? `with=${params.get('with')}`
+    : params.get('ask')
+      ? `ask=${params.get('ask')}`
+      : null;
 
-  if (trx.error) return <Alert>{trx.error}</Alert>;
-  if (!trx.data) return <Loading />;
+  const error = trx.error ?? asks.error;
+  if (error) return <Alert>{error}</Alert>;
+  if (!trx.data || !asks.data) return <LoadingBlock className="min-h-[60vh]" />;
 
-  const all = trx.data.transactions;
+  const all = [
+    ...trx.data.transactions.map(fromTrade),
+    ...asks.data.inquiries.map(fromInquiry),
+  ].sort((a, b) => lastActivity(b) - lastActivity(a));
   const q = query.trim().toLowerCase();
   const shown = q
     ? all.filter(
@@ -336,8 +437,8 @@ function Chat() {
           t.counterpart.name.toLowerCase().includes(q) || t.listingTitle.toLowerCase().includes(q),
       )
     : all;
-  const active = all.find((t) => t.id === activeId);
-  const select = (id: string | null) => router.replace(id ? `/chat?with=${id}` : '/chat');
+  const active = all.find((t) => t.param === activeParam);
+  const select = (param: string | null) => router.replace(param ? `/chat?${param}` : '/chat');
 
   return (
     <div className="space-y-3">
@@ -361,17 +462,17 @@ function Chat() {
           {shown.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted">
               {all.length === 0
-                ? 'No conversations yet. Claim a listing to start chatting with the seller.'
+                ? 'No conversations yet. Open a listing and tap “Chat with seller” to ask a question.'
                 : 'No conversations match your search.'}
             </p>
           ) : (
             <ul className="min-h-0 flex-1 overflow-y-auto">
               {shown.map((t) => (
                 <ThreadRow
-                  key={t.id}
-                  trx={t}
-                  active={t.id === active?.id}
-                  onSelect={() => select(t.id)}
+                  key={t.param}
+                  thread={t}
+                  active={t.param === active?.param}
+                  onSelect={() => select(t.param)}
                 />
               ))}
             </ul>
@@ -380,12 +481,17 @@ function Chat() {
 
         {active ? (
           <Thread
-            trx={active}
-            key={active.id}
+            thread={active}
+            key={active.param}
             onBack={() => select(null)}
-            onReviewed={trx.reload}
+            onReviewed={reloadTrades}
             onActivity={reloadList}
           />
+        ) : activeParam ? (
+          // A link to a thread that is not in the lists (yet): e.g. just opened, still empty.
+          <section className="flex items-center justify-center rounded-[17px] bg-brand-50 p-6 text-center text-ink shadow-card">
+            This conversation could not be found.
+          </section>
         ) : (
           <section className="hidden items-center justify-center rounded-[17px] bg-brand-50 p-6 text-center text-ink shadow-card lg:flex">
             Pick a conversation to start chatting.
@@ -400,7 +506,7 @@ export default function ChatPage() {
   return (
     <RequireAuth>
       {() => (
-        <Suspense fallback={<Loading />}>
+        <Suspense fallback={<LoadingBlock className="min-h-[60vh]" />}>
           <Chat />
         </Suspense>
       )}

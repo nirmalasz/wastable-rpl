@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert, Badge, Button, Card, Loading } from '@/components/ui';
+import { Alert, Badge, Button, Card, LoadingBlock } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { formatDateTime, humanize } from '@/lib/format';
 import type { Appeal, ModerationCase } from '@/lib/types';
@@ -49,7 +49,7 @@ function Admin() {
       <section className="space-y-3">
         <h2 className="text-2xl">Open cases ({cases.data?.cases.length ?? 0})</h2>
         {cases.error && <Alert>{cases.error}</Alert>}
-        {cases.loading && !cases.data && <Loading />}
+        {cases.loading && !cases.data && <LoadingBlock className="min-h-40" />}
         {cases.data?.cases.length === 0 && <p className="text-sm text-muted">Queue is empty.</p>}
         {cases.data?.cases.map((c) => (
           <Card key={c.id} className="space-y-2">

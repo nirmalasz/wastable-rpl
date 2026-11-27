@@ -6,12 +6,14 @@ import { useState, type FormEvent } from 'react';
 import { AuthInput, AuthLayout, authButton } from '@/components/auth-layout';
 import { Alert } from '@/components/ui';
 import { useAuth } from '@/features/auth';
+import { TERMS_VERSION } from '@/features/terms/content';
 
 export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [agreed, setAgreed] = useState(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,10 +23,14 @@ export default function RegisterPage() {
       setError('Passwords do not match.');
       return;
     }
+    if (!agreed) {
+      setError('Please read and agree to the Terms & SOP first.');
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
-      await register(String(form.get('name')), String(form.get('email')), password);
+      await register(String(form.get('name')), String(form.get('email')), password, TERMS_VERSION);
       router.push('/');
     } catch (err) {
       setError((err as Error).message);
@@ -69,8 +75,25 @@ export default function RegisterPage() {
           placeholder="confirm password"
           aria-label="Confirm password"
         />
+        <label className="flex items-start gap-3 pt-1 text-base text-ink">
+          <input
+            type="checkbox"
+            name="terms"
+            required
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-1 size-5 shrink-0 accent-brand-500"
+          />
+          <span>
+            I have read and agree to the {/* New tab, so what was typed in the form is not lost. */}
+            <Link href="/terms" target="_blank" className="font-semibold text-brand-700 underline">
+              Terms &amp; SOP
+            </Link>
+            .
+          </span>
+        </label>
         {error && <Alert>{error}</Alert>}
-        <button type="submit" disabled={busy} className={`${authButton} mt-2`}>
+        <button type="submit" disabled={busy || !agreed} className={`${authButton} mt-2`}>
           {busy ? 'Creating…' : 'Register'}
         </button>
       </form>

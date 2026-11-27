@@ -67,6 +67,7 @@ transactionsRouter.post('/listings/:id/claim', requireAuth, requireVerified, asy
       listing.sellerId,
       'CLAIM_REQUEST',
       `Someone wants "${listing.title}". Arrange the pickup or delivery details.`,
+      { listingId: listing.id, transactionId: created?.id },
     );
     return created;
   });
@@ -219,7 +220,11 @@ transactionsRouter.get('/transactions/mine', requireAuth, async (_req, res) => {
 
 const updateSchema = z.object({ status: z.enum(['COMPLETED', 'CANCELLED']) });
 
-/** Buyer confirms pickup (COMPLETED); buyer or seller can cancel, which frees the listing. */
+/**
+ * Completing a trade: the buyer confirms "I picked it up" or the seller confirms "I handed the
+ * food"; either one closes it, and the other side is told. Either side can also cancel, which
+ * frees the listing.
+ */
 transactionsRouter.patch('/transactions/:id', requireAuth, async (req, res) => {
   const { id } = idParam.parse(req.params);
   const { status } = updateSchema.parse(req.body);
@@ -238,9 +243,6 @@ transactionsRouter.patch('/transactions/:id', requireAuth, async (req, res) => {
     const isClaimer = found.claimerId === user.id;
     const isSeller = listing.sellerId === user.id;
     if (!isClaimer && !isSeller) throw HttpError.forbidden();
-    if (status === 'COMPLETED' && !isClaimer) {
-      throw HttpError.forbidden('Only the buyer can confirm the pickup');
-    }
     if (found.status !== 'PENDING')
       throw HttpError.conflict(`Transaction is already ${found.status}`);
 
@@ -261,12 +263,17 @@ transactionsRouter.patch('/transactions/:id', requireAuth, async (req, res) => {
         .where(eq(listings.id, listing.id));
       await notify(
         tx,
-        listing.sellerId,
+        isClaimer ? listing.sellerId : found.claimerId,
         'PICKUP_COMPLETED',
-        `Pickup of "${listing.title}" is confirmed. Leave a review!`,
+        isClaimer
+          ? `Pickup of "${listing.title}" is confirmed by the buyer. Leave a review!`
+          : `The seller confirmed handing over "${listing.title}". Leave a review!`,
+        { listingId: listing.id, transactionId: found.id },
       );
       for (const w of waiting) {
-        await notify(tx, w.userId, 'ITEM_TAKEN', `"${listing.title}" has been taken.`);
+        await notify(tx, w.userId, 'ITEM_TAKEN', `"${listing.title}" has been taken.`, {
+          listingId: listing.id,
+        });
       }
       await tx.delete(waitlistEntries).where(eq(waitlistEntries.listingId, listing.id));
       return { transaction: done, listingStatus: 'COMPLETED' as const };

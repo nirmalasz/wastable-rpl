@@ -56,7 +56,13 @@ interface AuthContextValue {
   /** False during server render and the first client render. */
   ready: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<AuthResponse>;
+  /** `acceptedTermsVersion` is the Terms & SOP version the person ticked on the form. */
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    acceptedTermsVersion: string,
+  ) => Promise<AuthResponse>;
   logout: () => void;
   refreshUser: () => void;
   /** Authenticated API call. */
@@ -86,11 +92,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     writeToken(res.token);
   }, []);
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
-    const res = await api<AuthResponse>('/auth/register', { body: { name, email, password } });
-    writeToken(res.token);
-    return res;
-  }, []);
+  const register = useCallback(
+    async (name: string, email: string, password: string, acceptedTermsVersion: string) => {
+      // The API requires the accepted version and stores it with the time of consent.
+      const res = await api<AuthResponse>('/auth/register', {
+        body: { name, email, password, acceptedTermsVersion },
+      });
+      writeToken(res.token);
+      return res;
+    },
+    [],
+  );
 
   const call = useCallback(
     <T,>(path: string, init: Parameters<typeof api>[1] = {}) =>

@@ -32,6 +32,8 @@ export interface User {
   avatarUrl: string | null;
   homeLat: number | null;
   homeLng: number | null;
+  /** Terms & SOP version agreed to on sign-up (null for accounts created before consent). */
+  termsVersion: string | null;
 }
 
 export interface Listing {
@@ -93,12 +95,33 @@ export interface Transaction {
   counterpart: { id: string; name: string; avatarUrl: string | null; contact: string | null };
 }
 
+/** A question thread with a seller before claiming (GET /inquiries/mine). */
+export interface Inquiry {
+  id: string;
+  createdAt: string;
+  listingId: string;
+  listingTitle: string;
+  listingStatus: ListingStatus;
+  listingType: ListingType;
+  price: number;
+  pickupArea: string;
+  role: 'BUYER' | 'SELLER';
+  unreadCount: number;
+  lastMessage: { body: string; createdAt: string; mine: boolean } | null;
+  counterpart: { id: string; name: string; avatarUrl: string | null };
+}
+
 export interface Notification {
   id: string;
   type: string;
   message: string;
   isRead: boolean;
   createdAt: string;
+  /** The listing and trade this notification is about (null for account-level ones). */
+  listingId: string | null;
+  transactionId: string | null;
+  /** A pre-claim question thread (Inquiry). */
+  inquiryId: string | null;
 }
 
 export interface ListingDraft {

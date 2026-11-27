@@ -1,3 +1,6 @@
+import { LoadingBlock } from '@/components/ui';
+
+/** Shown while a route loads. */
 export default function Loading() {
-  return <p className="text-sm text-muted">Loading…</p>;
+  return <LoadingBlock className="min-h-[60vh]" />;
 }

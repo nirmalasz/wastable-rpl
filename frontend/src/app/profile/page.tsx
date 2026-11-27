@@ -1,9 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState, type FormEvent } from 'react';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert, Badge, Button, Card, Field, Loading, Textarea } from '@/components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  LoadingBlock,
+  Textarea,
+} from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { ListingCard } from '@/features/listings/listing-card';
 import { ListingGrid, ProfileHeader, ProfileTabs, type ProfileTab } from '@/features/profile';
@@ -17,16 +27,15 @@ function ListingTab() {
   const { token } = useAuth();
   const mine = useApi<{ listings: MyListing[] }>('/listings/mine', token);
   if (mine.error) return <Alert>{mine.error}</Alert>;
-  if (!mine.data) return <Loading />;
+  if (!mine.data) return <LoadingBlock label="Loading listings…" className="min-h-64" />;
   const visible = mine.data.listings.filter((l) => l.status !== 'REMOVED');
   if (visible.length === 0) {
     return (
-      <p className="rounded-[20px] bg-white p-6 text-center text-muted shadow-card">
-        You have no listings yet.{' '}
+      <EmptyState title="You have no listings yet.">
         <Link href="/listings/new" className="text-brand-700 underline">
           Post food
         </Link>
-      </p>
+      </EmptyState>
     );
   }
   return (
@@ -41,18 +50,20 @@ function ListingTab() {
 function RatingTab({ userId }: { userId: string }) {
   const reviews = useApi<ReviewSummary>(`/users/${userId}/reviews`);
   if (reviews.error) return <Alert>{reviews.error}</Alert>;
-  if (!reviews.data) return <Loading />;
+  if (!reviews.data) return <LoadingBlock className="min-h-64" />;
   return <RatingPanel summary={reviews.data} />;
 }
 
 function Profile({ user }: { user: User }) {
-  const { token, call } = useAuth();
+  const { token, call, logout } = useAuth();
+  // /profile?tab=rating opens the Rating tab (used by "new review" notifications).
+  const startOnRating = useSearchParams().get('tab') === 'rating';
   const appeals = useApi<{ appeals: Appeal[] }>(
     user.status === 'SUSPENDED' ? '/appeals/mine' : null,
     token,
   );
   const [notice, setNotice] = useState<{ kind: 'error' | 'success'; text: string }>();
-  const [tab, setTab] = useState<ProfileTab>('listing');
+  const [tab, setTab] = useState<ProfileTab>(startOnRating ? 'rating' : 'listing');
   const [editing, setEditing] = useState(false);
 
   async function appeal(e: FormEvent<HTMLFormElement>) {
@@ -74,17 +85,23 @@ function Profile({ user }: { user: User }) {
         avatarUrl={user.avatarUrl}
         subtitle={`@${user.email.split('@')[0]}`}
         action={
-          <Button
-            type="button"
-            variant="secondary"
-            aria-haspopup="dialog"
-            onClick={() => {
-              setNotice(undefined);
-              setEditing(true);
-            }}
-          >
-            Edit profile
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setNotice(undefined);
+                setEditing(true);
+              }}
+            >
+              Edit profile
+            </Button>
+            {/* Phones have no left rail, so logging out lives here. */}
+            <Button type="button" variant="secondary" className="md:hidden" onClick={logout}>
+              Log out
+            </Button>
+          </div>
         }
       />
 
@@ -127,5 +144,13 @@ function Profile({ user }: { user: User }) {
 }
 
 export default function ProfilePage() {
-  return <RequireAuth>{(user) => <Profile key={user.id} user={user} />}</RequireAuth>;
+  return (
+    <RequireAuth>
+      {(user) => (
+        <Suspense fallback={<LoadingBlock className="min-h-[60vh]" />}>
+          <Profile key={user.id} user={user} />
+        </Suspense>
+      )}
+    </RequireAuth>
+  );
 }

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert, Badge, Loading } from '@/components/ui';
+import { Alert, Badge, LoadingBlock } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { useCart } from '@/features/cart';
 import { priceLabel } from '@/features/listings/listing-card';
@@ -110,7 +110,7 @@ function Cart() {
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 
       {!loaded ? (
-        <Loading />
+        <LoadingBlock label="Loading your cart…" className="min-h-64" />
       ) : items.length === 0 ? (
         <div className="rounded-[17px] bg-white p-8 text-center shadow-card">
           <p className="text-lg">Your cart is empty.</p>

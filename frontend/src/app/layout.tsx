@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
 import { Be_Vietnam_Pro, Langar } from 'next/font/google';
 import type { ReactNode } from 'react';
-import { AccountBanner } from '@/components/account-banner';
-import { FoodSafetyDisclaimer } from '@/components/food-safety-disclaimer';
-import { SiteHeader, SiteSidebar } from '@/components/site-header';
+import { AppShell } from '@/components/app-shell';
 import { AuthProvider } from '@/features/auth';
 import './globals.css';
 
@@ -26,21 +24,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={`${langar.variable} ${beVietnam.variable}`}>
       <body className="min-h-screen">
         <AuthProvider>
-          <div className="flex min-h-screen">
-            <SiteSidebar />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <SiteHeader />
-              <main className="mx-auto w-full max-w-[1320px] flex-1 space-y-4 px-4 pt-2 pb-8 md:px-8">
-                <AccountBanner />
-                {children}
-              </main>
-              <footer className="border-t border-sand">
-                <div className="mx-auto max-w-[1320px] px-4 py-4 md:px-8">
-                  <FoodSafetyDisclaimer />
-                </div>
-              </footer>
-            </div>
-          </div>
+          <AppShell>{children}</AppShell>
         </AuthProvider>
       </body>
     </html>

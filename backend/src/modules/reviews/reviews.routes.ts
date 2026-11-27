@@ -31,6 +31,7 @@ reviewsRouter.post('/transactions/:id/reviews', requireAuth, requireVerified, as
       status: transactions.status,
       claimerId: transactions.claimerId,
       sellerId: listings.sellerId,
+      listingId: listings.id,
     })
     .from(transactions)
     .innerJoin(listings, eq(listings.id, transactions.listingId))
@@ -57,7 +58,10 @@ reviewsRouter.post('/transactions/:id/reviews', requireAuth, requireVerified, as
       photoUrl: body.photoUrl ?? null,
     })
     .returning();
-  await notify(db, revieweeId, 'NEW_REVIEW', `You received a ${body.rating}-star review.`);
+  await notify(db, revieweeId, 'NEW_REVIEW', `You received a ${body.rating}-star review.`, {
+    listingId: row.listingId,
+    transactionId: id,
+  });
   res.status(201).json({ review });
 });
 

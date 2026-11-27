@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { RequireAuth } from '@/components/require-auth';
-import { Alert, Loading } from '@/components/ui';
+import { Alert, LoadingBlock } from '@/components/ui';
 import { useAuth } from '@/features/auth';
 import { ListingForm } from '@/features/listings/listing-form';
 import { humanize } from '@/lib/format';
@@ -16,7 +16,7 @@ function EditListing({ id }: { id: string }) {
   const detail = useApi<ListingDetail>(`/listings/${id}`, token);
 
   if (detail.error) return <Alert>{detail.error}</Alert>;
-  if (!detail.data) return <Loading />;
+  if (!detail.data) return <LoadingBlock className="min-h-[60vh]" />;
   const { listing, isOwner } = detail.data;
 
   if (!isOwner) return <Alert>Only the seller can edit this listing.</Alert>;
