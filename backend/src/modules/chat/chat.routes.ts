@@ -183,49 +183,55 @@ chatRouter.post(
  * Opens (or reopens) the caller's question thread with the seller of a listing. Idempotent:
  * asking twice about the same listing returns the same thread.
  */
-chatRouter.post('/listings/:id/inquiry', requireAuth, requireVerified, async (req, res) => {
-  const { id } = idParam.parse(req.params);
-  const me = currentUser(res);
-  const db = getDb();
-  const [listing] = await db.select().from(listings).where(eq(listings.id, id));
-  if (!listing || listing.status === 'UNDER_REVIEW' || listing.status === 'REMOVED') {
-    throw HttpError.notFound('Listing not found');
-  }
-  if (listing.sellerId === me.id) throw HttpError.badRequest('This is your own listing');
+chatRouter.post(
+  '/listings/:id/inquiry',
+  requireAuth,
+  requireVerified,
+  chatLimiter,
+  async (req, res) => {
+    const { id } = idParam.parse(req.params);
+    const me = currentUser(res);
+    const db = getDb();
+    const [listing] = await db.select().from(listings).where(eq(listings.id, id));
+    if (!listing || listing.status === 'UNDER_REVIEW' || listing.status === 'REMOVED') {
+      throw HttpError.notFound('Listing not found');
+    }
+    if (listing.sellerId === me.id) throw HttpError.badRequest('This is your own listing');
 
-  const [existing] = await db
-    .select({ id: inquiries.id })
-    .from(inquiries)
-    .where(and(eq(inquiries.listingId, id), eq(inquiries.buyerId, me.id)));
-  if (existing) {
-    res.json({ inquiry: existing });
-    return;
-  }
-  if (listing.status !== 'AVAILABLE' && listing.status !== 'PENDING') {
-    throw HttpError.conflict('This item is no longer available');
-  }
-  const [created] = await db
-    .insert(inquiries)
-    .values({ listingId: id, buyerId: me.id })
-    .onConflictDoNothing()
-    .returning({ id: inquiries.id });
-  // A parallel request may have created it first; return that one.
-  const inquiry =
-    created ??
-    (
-      await db
-        .select({ id: inquiries.id })
-        .from(inquiries)
-        .where(and(eq(inquiries.listingId, id), eq(inquiries.buyerId, me.id)))
-    )[0];
-  res.status(created ? 201 : 200).json({ inquiry });
-});
+    const [existing] = await db
+      .select({ id: inquiries.id })
+      .from(inquiries)
+      .where(and(eq(inquiries.listingId, id), eq(inquiries.buyerId, me.id)));
+    if (existing) {
+      res.json({ inquiry: existing });
+      return;
+    }
+    if (listing.status !== 'AVAILABLE' && listing.status !== 'PENDING') {
+      throw HttpError.conflict('This item is no longer available');
+    }
+    const [created] = await db
+      .insert(inquiries)
+      .values({ listingId: id, buyerId: me.id })
+      .onConflictDoNothing()
+      .returning({ id: inquiries.id });
+    // A parallel request may have created it first; return that one.
+    const inquiry =
+      created ??
+      (
+        await db
+          .select({ id: inquiries.id })
+          .from(inquiries)
+          .where(and(eq(inquiries.listingId, id), eq(inquiries.buyerId, me.id)))
+      )[0];
+    res.status(created ? 201 : 200).json({ inquiry });
+  },
+);
 
 const seller = alias(users, 'seller');
 
 /**
- * The caller's question threads, as buyer or seller, newest activity first. A seller only sees a
- * thread once the buyer has written something.
+ * The caller's question threads, as buyer or seller, newest thread first (the chat page re-sorts
+ * by latest message). A seller only sees a thread once the buyer has written something.
  */
 chatRouter.get('/inquiries/mine', requireAuth, async (_req, res) => {
   const me = currentUser(res);

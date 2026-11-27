@@ -231,14 +231,25 @@ transactionsRouter.patch('/transactions/:id', requireAuth, async (req, res) => {
   const user = currentUser(res);
 
   const result = await getDb().transaction(async (tx) => {
-    const [found] = await tx.select().from(transactions).where(eq(transactions.id, id));
-    if (!found) throw HttpError.notFound('Transaction not found');
+    const [peek] = await tx
+      .select({ listingId: transactions.listingId })
+      .from(transactions)
+      .where(eq(transactions.id, id));
+    if (!peek) throw HttpError.notFound('Transaction not found');
+    // Lock the listing first (same order as claiming), then re-read the transaction under a lock:
+    // buyer and seller can both act on it, so a read taken before the lock may already be stale.
     const [listing] = await tx
       .select()
       .from(listings)
-      .where(eq(listings.id, found.listingId))
+      .where(eq(listings.id, peek.listingId))
       .for('update');
     if (!listing) throw HttpError.notFound('Listing not found');
+    const [found] = await tx
+      .select()
+      .from(transactions)
+      .where(eq(transactions.id, id))
+      .for('update');
+    if (!found) throw HttpError.notFound('Transaction not found');
 
     const isClaimer = found.claimerId === user.id;
     const isSeller = listing.sellerId === user.id;
